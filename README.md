@@ -22,7 +22,7 @@ The project is structured as one unified mod: gameplay logic, assets, world data
 - World generation, authored structures, datapack dungeons and custom dimensions
 - Server-side progress ownership and one-time reward protection
 
-## Campaign Flow
+## Devam Serisi
 
 ```text
 Baran / Demon Castle
@@ -98,4 +98,5 @@ Release `v1.0.0` is available. Core boss encounters, campaign systems, custom as
 ## Disclaimer
 
 This is an unofficial fan-made development and portfolio project. Solo Leveling and related names belong to their respective rights holders. This project is not affiliated with or endorsed by the original creators or publishers.
+
 
