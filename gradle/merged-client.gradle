@@ -1,0 +1,218 @@
+import org.gradle.api.file.FileCollection
+
+def mergedClientRoot = layout.buildDirectory.dir('merged-client/main')
+def mergedClientLibraries = configurations.runtimeClasspath.filter {
+    !it.name.startsWith('SLR-') && !it.name.startsWith('geckolib-forge-')
+}
+
+sourceSets {
+    mergedDev {
+        java.setSrcDirs([])
+        resources.setSrcDirs([])
+        output.resourcesDir = mergedClientRoot.get().asFile
+        output.dir(mergedClientRoot, builtBy: 'prepareMergedClientMod')
+        compileClasspath = sourceSets.main.compileClasspath
+        runtimeClasspath = output + mergedClientLibraries
+    }
+}
+
+def findSingleMappedDependency = { String label, String relativeDir, String fileName ->
+    File directory = file("${System.getProperty('user.home')}/.gradle/caches/forge_gradle/deobf_dependencies/${relativeDir}")
+    if (!directory.isDirectory()) {
+        throw new GradleException("Missing mapped ${label} dependency directory: ${directory}")
+    }
+    List<File> matches = fileTree(directory).matching { include fileName }.files.sort()
+    if (matches.size() != 1) {
+        throw new GradleException("Expected exactly one mapped ${label} dependency, found ${matches.size()}: ${matches}")
+    }
+    return matches[0]
+}
+
+tasks.register('prepareMergedClientMod', Sync) {
+    group = 'forgegradle runs'
+    description = 'Builds the exploded one-visible-mod client input used by runClient.'
+
+    dependsOn tasks.named('classes')
+
+    into mergedClientRoot
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from({
+        zipTree(findSingleMappedDependency(
+                'SLR',
+                "private/SLR/1.2.0_mapped_${mapping_channel}_${mapping_version}",
+                "SLR-1.2.0_mapped_${mapping_channel}_${mapping_version}.jar"))
+    }) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/mods.toml'
+        exclude 'META-INF/accesstransformer.cfg'
+        exclude 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA'
+        exclude 'data/minecraft/tags/entity_types/soloboss.json'
+        exclude "assets/sololeveling/models/custom/kasaka's_venom_fangs.json"
+        filesMatching('assets/sololeveling/animations/kaiselin.animation.json') {
+            filter { String line -> line.replace('"+math.cos', '"math.cos') }
+        }
+        filesMatching('assets/sololeveling/models/item/emerald_dagger.json') {
+            filter { String line ->
+                line.replace('"missing": "sololeveling:block/"', '"missing": "sololeveling:block/bladetext"')
+            }
+        }
+    }
+
+    from({
+        zipTree(findSingleMappedDependency(
+                'GeckoLib',
+                "software/bernie/geckolib/geckolib-forge-${minecraft_version}/${geckolib_version}_mapped_${mapping_channel}_${mapping_version}",
+                "geckolib-forge-${minecraft_version}-${geckolib_version}_mapped_${mapping_channel}_${mapping_version}.jar"))
+    }) {
+        include 'software/bernie/geckolib/**'
+        include 'assets/geckolib/**'
+        include 'geckolib.mixins.json'
+        include 'geckolib.refmap.json'
+        include 'META-INF/jarjar/**'
+        exclude 'software/bernie/example/GeckoLibMod.class'
+        exclude 'META-INF/mods.toml'
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA'
+    }
+
+    from(sourceSets.main.output) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/mods.toml'
+        exclude 'META-INF/accesstransformer.cfg'
+        exclude 'pack.mcmeta'
+        exclude 'dev/eness/sololeveling3/SoloLeveling3Standalone.class'
+    }
+
+    from('src/monolithic/resources') {
+        filesMatching('META-INF/mods.toml') {
+            expand([
+                    mod_version: mod_version,
+                    mod_name: 'Solo Leveling Final',
+                    mod_authors: mod_authors
+            ])
+        }
+    }
+
+    into('META-INF') {
+        from({ temporaryDir }) {
+            include 'MANIFEST.MF'
+        }
+    }
+
+    doFirst {
+        temporaryDir.mkdirs()
+        new File(temporaryDir, 'MANIFEST.MF').text = """Manifest-Version: 1.0
+Specification-Title: sololeveling
+Specification-Vendor: ${mod_authors}
+Specification-Version: 1
+Implementation-Title: Solo Leveling Final
+Implementation-Version: ${mod_version}
+Implementation-Vendor: ${mod_authors}
+MixinConfigs: mixins.sololeveling.json,mixins.sololeveling3.json,geckolib.mixins.json
+
+"""
+    }
+}
+
+tasks.register('verifyMergedClientMod') {
+    group = 'verification'
+    description = 'Validates the exploded merged client mod used by runClient.'
+    dependsOn tasks.named('prepareMergedClientMod')
+
+    doLast {
+        File root = mergedClientRoot.get().asFile
+        List<String> required = [
+                'META-INF/MANIFEST.MF',
+                'META-INF/mods.toml',
+                'META-INF/accesstransformer.cfg',
+                'META-INF/jarjar/mclib-20.jar',
+                'mixins.sololeveling.json',
+                'mixins.sololeveling.refmap.json',
+                'mixins.sololeveling3.json',
+                'geckolib.mixins.json',
+                'geckolib.refmap.json',
+                'net/solocraft/SololevelingMod.class',
+                'software/bernie/geckolib/GeckoLib.class',
+                'dev/eness/sololeveling3/SoloLeveling3.class',
+                'dev/eness/sololeveling3/mixin/SololevelingModBootstrapMixin.class'
+        ]
+        required.each { relative ->
+            File target = new File(root, relative)
+            if (!target.isFile() || target.length() == 0L) {
+                throw new GradleException("Merged client mod is missing: ${relative}")
+            }
+        }
+
+        if (new File(root, 'dev/eness/sololeveling3/SoloLeveling3Standalone.class').exists()
+                || new File(root, 'software/bernie/example/GeckoLibMod.class').exists()) {
+            throw new GradleException('A secondary @Mod entry point leaked into the merged client tree.')
+        }
+
+        String modsToml = new File(root, 'META-INF/mods.toml').getText('UTF-8')
+        int modBlocks = (modsToml =~ /(?m)^\[\[mods\]\]$/).count
+        if (modBlocks != 1
+                || !modsToml.contains('modId="sololeveling"')
+                || !modsToml.contains('displayName="Solo Leveling Final"')
+                || modsToml.contains('modId="sololeveling3"')
+                || modsToml.contains('modId="geckolib"')) {
+            throw new GradleException('Merged client mods.toml must expose exactly one Solo Leveling Final mod.')
+        }
+
+        String manifest = new File(root, 'META-INF/MANIFEST.MF').getText('UTF-8')
+        ['mixins.sololeveling.json', 'mixins.sololeveling3.json', 'geckolib.mixins.json'].each { config ->
+            if (!manifest.contains(config)) {
+                throw new GradleException("Merged client manifest does not load ${config}")
+            }
+        }
+
+        String kaiselinAnimations = new File(root, 'assets/sololeveling/animations/kaiselin.animation.json').getText('UTF-8')
+        if (kaiselinAnimations.contains('"+math.cos')) {
+            throw new GradleException('Invalid leading-plus Molang expressions remain in merged client assets.')
+        }
+
+        String emeraldDaggerModel = new File(root, 'assets/sololeveling/models/item/emerald_dagger.json').getText('UTF-8')
+        if (emeraldDaggerModel.contains('"missing": "sololeveling:block/"')) {
+            throw new GradleException('Emerald Dagger still points at an empty texture path in merged client assets.')
+        }
+
+        def runClient = tasks.named('runClient').get()
+        FileCollection runtimeArtifacts = runClient.runtimeClasspathArtifacts
+        List<String> runtimeNames = runtimeArtifacts.files.collect { it.name }.sort()
+        if (runtimeNames.any { it.contains('SLR') || it.contains('geckolib-forge') }) {
+            throw new GradleException("runClient runtimeClasspathArtifacts still exposes external mod jars: ${runtimeNames}")
+        }
+    }
+}
+
+tasks.matching { it.name == 'runClient' }.configureEach {
+    dependsOn tasks.named('prepareMergedClientMod')
+}
+
+// ForgeGradle installs its runtime collection when generating the run tasks.
+// Filter only after those tasks are configured, retaining Minecraft's libraries.
+gradle.taskGraph.whenReady {
+    tasks.named('runClient').configure {
+        runtimeClasspathArtifacts.setFrom(mergedClientLibraries)
+    }
+}
+
+minecraft {
+    runs {
+        client {
+            getMods().clear()
+            setSources([sourceSets.mergedDev])
+            mods {
+                sololeveling {
+                    source sourceSets.mergedDev
+                }
+            }
+            property 'forge.enabledGameTestNamespaces', mod_id
+            property 'sl3.final.singleMod', 'true'
+        }
+    }
+}
+
+tasks.named('check').configure {
+    dependsOn tasks.named('verifyMergedClientMod')
+}

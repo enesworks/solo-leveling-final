@@ -1,0 +1,7 @@
+{
+  "parent": "solo_leveling:custom/oldkey",
+  "textures": {
+    "0": "solo_leveling:block/old_key",
+    "particle": "solo_leveling:block/old_key"
+  }
+}

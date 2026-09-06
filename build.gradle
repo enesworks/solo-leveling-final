@@ -1,0 +1,546 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+// Mojang ships Java 17 to end users in 1.18+, so your mod should target Java 17.
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
+minecraft {
+    // The mappings can be changed at any time and must be in the following format.
+    // Channel:   Version:
+    // official   MCVersion             Official field/method names from Mojang mapping files
+    // parchment  YYYY.MM.DD-MCVersion  Open community-sourced parameter names and javadocs layered on top of official
+    //
+    // You must be aware of the Mojang license when using the 'official' or 'parchment' mappings.
+    // See more information here: https://github.com/MinecraftForge/MCPConfig/blob/master/Mojang.md
+    //
+    // Parchment is an unofficial project maintained by ParchmentMC, separate from MinecraftForge
+    // Additional setup is needed to use their mappings: https://parchmentmc.org/docs/getting-started
+    //
+    // Use non-default mappings at your own risk. They may not always work.
+    // Simply re-run your setup task after changing the mappings to update your workspace.
+    mappings channel: mapping_channel, version: mapping_version
+
+    // When true, this property will have all Eclipse/IntelliJ IDEA run configurations run the "prepareX" task for the given run configuration before launching the game.
+    // In most cases, it is not necessary to enable.
+    // enableEclipsePrepareRuns = true
+    // enableIdeaPrepareRuns = true
+
+    // This property allows configuring Gradle's ProcessResources task(s) to run on IDE output locations before launching the game.
+    // It is REQUIRED to be set to true for this template to function.
+    // See https://docs.gradle.org/current/dsl/org.gradle.language.jvm.tasks.ProcessResources.html
+    copyIdeResources = true
+
+    // When true, this property will add the folder name of all declared run configurations to generated IDE run configurations.
+    // The folder name can be set on a run configuration using the "folderName" property.
+    // By default, the folder name of a run configuration is the name of the Gradle project containing it.
+    // generateRunFolders = true
+
+    // This property enables access transformers for use in development.
+    // They will be applied to the Minecraft artifact.
+    // The access transformer file can be anywhere in the project.
+    // However, it must be at "META-INF/accesstransformer.cfg" in the final mod jar to be loaded by Forge.
+    // This default location is a best practice to automatically put the file in the right place in the final jar.
+    // See https://docs.minecraftforge.net/en/latest/advanced/accesstransformers/ for more information.
+    // accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
+
+    // Default run configurations.
+    // These can be tweaked, removed, or duplicated as needed.
+    runs {
+        // applies to all the run configs below
+        configureEach {
+            workingDirectory project.file('run')
+
+            // Remap dependency mixin refmaps when running against the readable
+            // Mojang-named userdev classes. Packaged Minecraft uses SRG names,
+            // so this is specifically required for reliable local client tests.
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', file("${buildDir}/createSrgToMcp/output.srg").absolutePath
+
+            // Recommended logging data for a userdev environment
+            // The markers can be added/remove as needed separated by commas.
+            // "SCAN": For mods scan.
+            // "REGISTRIES": For firing of registry events.
+            // "REGISTRYDUMP": For getting the contents of all registries.
+            property 'forge.logging.markers', 'REGISTRIES'
+
+            // Recommended logging level for the console
+            // You can set various levels here.
+            // Please read: https://stackoverflow.com/questions/2031163/when-to-use-the-different-log-levels
+            property 'forge.logging.console.level', 'debug'
+
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        client {
+            // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
+            property 'forge.enabledGameTestNamespaces', mod_id
+            if (project.hasProperty('antaresVisualReview')) {
+                property 'sl3.antares.visualReview', 'true'
+                args '--quickPlaySingleplayer', 'Antares-Visual-Review'
+            }
+        }
+
+        server {
+            property 'forge.enabledGameTestNamespaces', mod_id
+            args '--nogui'
+        }
+
+        // This run config launches GameTestServer and runs all registered gametests, then exits.
+        // By default, the server will crash when no gametests are provided.
+        // The gametest system is also enabled by default for other run configs under the /test command.
+        gameTestServer {
+            workingDirectory project.file('build/rakan-gametest-run')
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+
+        data {
+            // example of overriding the workingDirectory set in configureEach above
+            workingDirectory project.file('run-data')
+
+            // Specify the modid for data generation, where to output the resulting resource, and where to look for existing resources.
+            args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
+        }
+    }
+}
+
+// Include resources generated by data generators.
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+repositories {
+    // Put repositories for dependencies here
+    // ForgeGradle automatically adds the Forge maven and Maven Central for you
+
+    // If you have mod jar dependencies in ./libs, you can declare them as a repository like so.
+    // See https://docs.gradle.org/current/userguide/declaring_repositories.html#sub:flat_dir_resolver
+    flatDir {
+        dir 'libs'
+    }
+    maven {
+        name = 'GeckoLib'
+        url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
+        content {
+            includeGroup('software.bernie.geckolib')
+            includeGroup('com.eliotlash.mclib')
+        }
+    }
+}
+
+configurations {
+    monolithicGecko
+}
+
+import groovy.json.JsonSlurper
+import javax.imageio.ImageIO
+
+dependencies {
+    // Specify the version of Minecraft to use.
+    // Any artifact can be supplied so long as it has a "userdev" classifier artifact and is a compatible patcher artifact.
+    // The "userdev" classifier will be requested and setup by ForgeGradle.
+    // If the group id is "net.minecraft" and the artifact id is one of ["client", "server", "joined"],
+    // then special handling is done to allow a setup of a vanilla dependency without the use of an external repository.
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // Compile and run against the user's private SLR build without modifying it.
+    implementation fg.deobf('private:SLR:1.2.0')
+    implementation fg.deobf("software.bernie.geckolib:geckolib-forge-${minecraft_version}:${geckolib_version}")
+    monolithicGecko("software.bernie.geckolib:geckolib-forge-${minecraft_version}:${geckolib_version}") {
+        transitive = false
+    }
+
+    // Example mod dependency with JEI - using fg.deobf() ensures the dependency is remapped to your development mappings
+    // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
+    // compileOnly fg.deobf("mezz.jei:jei-${mc_version}-common-api:${jei_version}")
+    // compileOnly fg.deobf("mezz.jei:jei-${mc_version}-forge-api:${jei_version}")
+    // runtimeOnly fg.deobf("mezz.jei:jei-${mc_version}-forge:${jei_version}")
+
+    // Example mod dependency using a mod jar from ./libs with a flat dir repository
+    // This maps to ./libs/coolmod-${mc_version}-${coolmod_version}.jar
+    // The group id is ignored when searching -- in this case, it is "blank"
+    // implementation fg.deobf("blank:coolmod-${mc_version}:${coolmod_version}")
+
+    // For more info:
+    // http://www.gradle.org/docs/current/userguide/artifact_dependencies_tutorial.html
+    // http://www.gradle.org/docs/current/userguide/dependency_management.html
+}
+
+// This block of code expands all declared replace properties in the specified resource targets.
+// A missing property will result in an error. Properties are expanded using ${} Groovy notation.
+// When "copyIdeResources" is enabled, this will also run before the game launches in IDE environments.
+// See https://docs.gradle.org/current/dsl/org.gradle.language.jvm.tasks.ProcessResources.html
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            minecraft_version: minecraft_version, minecraft_version_range: minecraft_version_range,
+            forge_version: forge_version, forge_version_range: forge_version_range,
+            loader_version_range: loader_version_range,
+            mod_id: mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: mod_version,
+            mod_authors: mod_authors, mod_description: mod_description,
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+// Example for how to get properties into the manifest for reading at runtime.
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1', // We are version 1 of ourselves
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : project.jar.archiveVersion,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+                'MixinConfigs'            : 'mixins.sololeveling3.json'
+        ])
+    }
+
+    // This is the preferred method to reobfuscate your jar file
+    finalizedBy 'reobfJar'
+}
+
+// However if you are in a multi-project build, dev time needs unobfed jar files, so you can delay the obfuscation until publishing by doing:
+// tasks.named('publish').configure {
+//     dependsOn 'reobfJar'
+// }
+
+// Example configuration to allow publishing using the maven-publish plugin
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            artifact jar
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/mcmodsrepo"
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+}
+
+tasks.register('verifyModResources') {
+    group = 'verification'
+    description = 'Validates every JSON resource and the mandatory Solo Leveling 3 asset graph.'
+
+    doLast {
+        File root = file('src/main/resources')
+        List<String> required = [
+                'META-INF/MANIFEST.MF',
+                'mixins.sololeveling3.json',
+                'data/sololeveling3/dimension/campaign_arena.json',
+                'data/sololeveling3/dimension_type/campaign_arena.json',
+                'data/sololeveling3/schematics/three_monarchs_master_v1.schem',
+                'data/sololeveling3/schematics/antares_final_master_v1.schem',
+                'data/sololeveling3/advancements/story/double_dungeon_return.json',
+                'data/sololeveling3/advancements/story/ice_monarch_retreat.json',
+                'data/sololeveling3/advancements/story/three_monarchs.json',
+                'data/sololeveling3/advancements/story/antares_final.json',
+                'data/sololeveling3/slr/dungeons/legia_prison.json',
+                'data/sololeveling3/slr/mob_pools/ice_monarch.json',
+                'data/sololeveling3/slr/mob_pools/legia.json',
+                'data/solo_leveling/structures/monarch_of_giants_room.nbt',
+                'data/solo_leveling/structures/chain_collum.nbt',
+                'assets/solo_leveling/geo/icemonarch.geo.json',
+                'assets/solo_leveling/geo/monarch_of_giants.geo.json',
+                'assets/solo_leveling/animations/icemonarch.animation.json',
+                'assets/solo_leveling/animations/monarch_of_giants.animation.json',
+                'assets/solo_leveling/models/custom/oldkey.json',
+                'assets/solo_leveling/textures/block/old_key.png',
+                'assets/solo_leveling/textures/entities/icemonarch.png',
+                'assets/solo_leveling/textures/entities/monarch_of_giants.png',
+                'assets/solo_leveling/textures/entities/mg_glow.png',
+                'assets/solo_leveling/textures/particle/dark_chain.png',
+                'assets/solo_leveling/textures/particle/frost.png',
+                'assets/solo_leveling/textures/particle/ice_spyke.png',
+                'assets/sololeveling3/models/item/old_key.json',
+                'assets/sololeveling3/particles/dark_chain.json',
+                'assets/sololeveling3/particles/frost.json',
+                'assets/sololeveling3/particles/ice_spike.json',
+                'assets/sololeveling3/particles/crimson_aura.json',
+                'assets/sololeveling3/particles/crimson_impact.json',
+                'assets/sololeveling3/particles/crimson_dust.json',
+                'assets/sololeveling3/textures/entity/tarnak.png',
+                'assets/sololeveling3/lang/en_us.json',
+                'assets/sololeveling3/lang/tr_tr.json',
+                'data/minecraft/tags/entity_types/soloboss.json'
+        ]
+        required.each { relative ->
+            File target = new File(root, relative)
+            if (!target.isFile() || target.length() == 0L) {
+                throw new GradleException("Missing or empty mandatory resource: ${relative}")
+            }
+        }
+
+        JsonSlurper parser = new JsonSlurper()
+        fileTree(root).matching { include '**/*.json' }.files.sort().each { jsonFile ->
+            try {
+                parser.parse(jsonFile, 'UTF-8')
+            } catch (Exception exception) {
+                throw new GradleException("Invalid JSON resource ${root.toPath().relativize(jsonFile.toPath())}: ${exception.message}", exception)
+            }
+        }
+
+        Map english = (Map) parser.parse(new File(root, 'assets/sololeveling3/lang/en_us.json'), 'UTF-8')
+        Map turkish = (Map) parser.parse(new File(root, 'assets/sololeveling3/lang/tr_tr.json'), 'UTF-8')
+        if (english.keySet() != turkish.keySet()) {
+            throw new GradleException("English/Turkish language keys differ. Only English: ${english.keySet() - turkish.keySet()}; only Turkish: ${turkish.keySet() - english.keySet()}")
+        }
+
+        Map iceAnimations = (Map) parser.parse(new File(root, 'assets/solo_leveling/animations/icemonarch.animation.json'), 'UTF-8')
+        Set<String> requiredIceAnimations = ['idle', 'walk', 'attack1', 'attack2', 'attack_magic'] as Set
+        if (!((Map) iceAnimations.animations).keySet().containsAll(requiredIceAnimations)) {
+            throw new GradleException("Ice Monarch animation file is missing: ${requiredIceAnimations - ((Map) iceAnimations.animations).keySet()}")
+        }
+
+        Map legiaAnimations = (Map) parser.parse(new File(root, 'assets/solo_leveling/animations/monarch_of_giants.animation.json'), 'UTF-8')
+        Set<String> requiredLegiaAnimations = ['prison', 'idle', 'walk', 'chain_break', 'attack1', 'attack2', 'attack3'] as Set
+        if (!((Map) legiaAnimations.animations).keySet().containsAll(requiredLegiaAnimations)) {
+            throw new GradleException("Legia animation file is missing: ${requiredLegiaAnimations - ((Map) legiaAnimations.animations).keySet()}")
+        }
+
+        Map dungeon = (Map) parser.parse(new File(root, 'data/sololeveling3/slr/dungeons/legia_prison.json'), 'UTF-8')
+        Map bossWave = (Map) ((List) ((Map) ((List) dungeon.encounters).first()).waves).first()
+        if (dungeon.structure != 'solo_leveling:monarch_of_giants_room'
+                || bossWave.pool != 'sololeveling3:legia'
+                || bossWave.boss != true) {
+            throw new GradleException('Legia dungeon no longer points to the sealed Legia boss structure/pool.')
+        }
+
+        Map mixinConfig = (Map) parser.parse(new File(root, 'mixins.sololeveling3.json'), 'UTF-8')
+        (((List) mixinConfig.mixins) + ((List) mixinConfig.client)).each { mixinName ->
+            File mixinSource = file("src/main/java/dev/eness/sololeveling3/mixin/${mixinName}.java")
+            if (!mixinSource.isFile()) {
+                throw new GradleException("Mixin config references missing source: ${mixinName}")
+            }
+        }
+
+        fileTree(root).matching { include '**/*.png' }.files.sort().each { png ->
+            def image = ImageIO.read(png)
+            if (image == null || image.width <= 0 || image.height <= 0) {
+                throw new GradleException("Unreadable PNG resource: ${root.toPath().relativize(png.toPath())}")
+            }
+        }
+
+        def tarnakTexture = ImageIO.read(new File(root, 'assets/sololeveling3/textures/entity/tarnak.png'))
+        if (tarnakTexture.width != 1024 || tarnakTexture.height != 1024) {
+            throw new GradleException('Tarnak texture must remain 1024x1024.')
+        }
+
+        String manifest = new File(root, 'META-INF/MANIFEST.MF').getText('UTF-8')
+        if (!manifest.contains('MixinConfigs: mixins.sololeveling3.json')) {
+            throw new GradleException('Source manifest does not register mixins.sololeveling3.json')
+        }
+    }
+}
+
+tasks.named('check').configure {
+    dependsOn tasks.named('verifyModResources')
+}
+
+def privateSlrJar = file('libs/SLR-1.2.0.jar')
+
+tasks.register('monolithicJar', Jar) {
+    group = 'build'
+    description = 'Builds the single visible-mod Solo Leveling Final distribution.'
+    dependsOn tasks.named('reobfJar')
+
+    archiveBaseName.set('Solo-Leveling-Final')
+    archiveVersion.set(mod_version)
+    archiveClassifier.set('all-in-one')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    from({ zipTree(privateSlrJar) }) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/mods.toml'
+        exclude 'META-INF/accesstransformer.cfg'
+        exclude 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA'
+        exclude 'data/minecraft/tags/entity_types/soloboss.json'
+
+        // Repair three harmless-but-noisy resource defects in the SLR 1.2.0
+        // base while it is folded into the private distribution.
+        exclude "assets/sololeveling/models/custom/kasaka's_venom_fangs.json"
+        filesMatching('assets/sololeveling/animations/kaiselin.animation.json') {
+            filter { String line -> line.replace('"+math.cos', '"math.cos') }
+        }
+        filesMatching('assets/sololeveling/models/item/emerald_dagger.json') {
+            filter { String line ->
+                line.replace('"missing": "sololeveling:block/"', '"missing": "sololeveling:block/bladetext"')
+            }
+        }
+    }
+
+    // GeckoLib is embedded as an implementation library, not as a second mod
+    // container. Its initializer is called by SoloLeveling3.bootstrap().
+    from({ zipTree(configurations.monolithicGecko.singleFile) }) {
+        include 'software/bernie/geckolib/**'
+        include 'assets/geckolib/**'
+        include 'geckolib.mixins.json'
+        include 'geckolib.refmap.json'
+        include 'META-INF/jarjar/**'
+    }
+
+    // Overlay the reobfuscated private expansion. Its standalone @Mod class is
+    // intentionally omitted because SLR is the sole visible mod container.
+    from({ zipTree(tasks.named('jar', Jar).get().archiveFile.get().asFile) }) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/mods.toml'
+        exclude 'META-INF/accesstransformer.cfg'
+        exclude 'pack.mcmeta'
+        exclude 'dev/eness/sololeveling3/SoloLeveling3Standalone.class'
+    }
+
+    from('src/monolithic/resources') {
+        filesMatching('META-INF/mods.toml') {
+            expand([
+                    mod_version: mod_version,
+                    mod_name: mod_name,
+                    mod_authors: mod_authors
+            ])
+        }
+    }
+
+    manifest {
+        attributes([
+                'Specification-Title'     : 'sololeveling',
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : mod_name,
+                'Implementation-Version'  : mod_version,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+                'MixinConfigs'            : 'mixins.sololeveling.json,mixins.sololeveling3.json,geckolib.mixins.json'
+        ])
+    }
+}
+
+tasks.register('verifyMonolithicJar') {
+    group = 'verification'
+    description = 'Validates the final one-mod distribution and its embedded runtimes.'
+    dependsOn tasks.named('monolithicJar')
+
+    doLast {
+        File bundle = tasks.named('monolithicJar', Jar).get().archiveFile.get().asFile
+        if (!bundle.isFile() || bundle.length() == 0L) {
+            throw new GradleException('Monolithic distribution was not created.')
+        }
+
+        java.util.zip.ZipFile zip = new java.util.zip.ZipFile(bundle)
+        try {
+            List<String> required = [
+                    'META-INF/MANIFEST.MF',
+                    'META-INF/mods.toml',
+                    'META-INF/accesstransformer.cfg',
+                    'META-INF/jarjar/mclib-20.jar',
+                    'mixins.sololeveling.json',
+                    'mixins.sololeveling.refmap.json',
+                    'mixins.sololeveling3.json',
+                    'geckolib.mixins.json',
+                    'geckolib.refmap.json',
+                    'net/solocraft/SololevelingMod.class',
+                    'software/bernie/geckolib/GeckoLib.class',
+                    'dev/eness/sololeveling3/SoloLeveling3.class',
+                    'dev/eness/sololeveling3/campaign/CampaignDirector.class',
+                    'dev/eness/sololeveling3/campaign/LegiaCampaign.class',
+                    'dev/eness/sololeveling3/campaign/CampaignSurvival.class',
+                    'dev/eness/sololeveling3/campaign/CampaignRewards.class',
+                    'dev/eness/sololeveling3/campaign/TempleReturnEncounter.class',
+                    'dev/eness/sololeveling3/campaign/CampaignArenas.class',
+                    'data/sololeveling3/dimension/campaign_arena.json',
+                    'data/sololeveling3/dimension_type/campaign_arena.json',
+                    'data/sololeveling3/schematics/three_monarchs_master_v1.schem',
+                    'data/sololeveling3/schematics/antares_final_master_v1.schem',
+                    'dev/eness/sololeveling3/mixin/SololevelingModBootstrapMixin.class',
+                    'dev/eness/sololeveling3/entity/TarnakEntity.class',
+                    'dev/eness/sololeveling3/client/renderer/TarnakRenderer.class',
+                    'data/sololeveling3/slr/dungeons/legia_prison.json',
+                    'data/solo_leveling/structures/monarch_of_giants_room.nbt',
+                    'data/minecraft/tags/entity_types/soloboss.json',
+                    'assets/sololeveling3/textures/entity/tarnak.png',
+                    'assets/sololeveling/textures/particle/glow_aura_red_1.png',
+                    'assets/sololeveling/textures/particle/impact_1_1.png',
+                    'assets/sololeveling/textures/particle/red_dust_particle_1.png'
+            ]
+            required.each { path ->
+                if (zip.getEntry(path) == null) {
+                    throw new GradleException("Monolithic distribution is missing: ${path}")
+                }
+            }
+
+            if (zip.getEntry('dev/eness/sololeveling3/SoloLeveling3Standalone.class') != null
+                    || zip.getEntry('software/bernie/example/GeckoLibMod.class') != null) {
+                throw new GradleException('A secondary @Mod entry point leaked into the monolithic distribution.')
+            }
+
+            if (zip.getEntry("assets/sololeveling/models/custom/kasaka's_venom_fangs.json") != null) {
+                throw new GradleException('The invalid legacy Kasaka model path leaked into the distribution.')
+            }
+
+            String kaiselinAnimations = zip.getInputStream(
+                    zip.getEntry('assets/sololeveling/animations/kaiselin.animation.json')
+            ).getText('UTF-8')
+            if (kaiselinAnimations.contains('"+math.cos')) {
+                throw new GradleException('Invalid leading-plus Molang expressions remain in Kaiselin animations.')
+            }
+
+            String emeraldDaggerModel = zip.getInputStream(
+                    zip.getEntry('assets/sololeveling/models/item/emerald_dagger.json')
+            ).getText('UTF-8')
+            if (emeraldDaggerModel.contains('"missing": "sololeveling:block/"')) {
+                throw new GradleException('Emerald Dagger still points at an empty texture path.')
+            }
+
+            String modsToml = zip.getInputStream(zip.getEntry('META-INF/mods.toml')).getText('UTF-8')
+            int modBlocks = (modsToml =~ /(?m)^\[\[mods\]\]$/).count
+            if (modBlocks != 1 || !modsToml.contains('modId="sololeveling"') || modsToml.contains('modId="geckolib"')
+                    || !modsToml.contains('displayName="Solo Leveling Final"')) {
+                throw new GradleException("Expected exactly one visible Solo Leveling mod entry, found ${modBlocks}.")
+            }
+
+            java.util.jar.Manifest parsedManifest = new java.util.jar.Manifest(
+                    zip.getInputStream(zip.getEntry('META-INF/MANIFEST.MF'))
+            )
+            String mixinConfigs = parsedManifest.mainAttributes.getValue('MixinConfigs') ?: ''
+            ['mixins.sololeveling.json', 'mixins.sololeveling3.json', 'geckolib.mixins.json'].each { config ->
+                if (!mixinConfigs.split(',').contains(config)) {
+                    throw new GradleException("Manifest does not load ${config}")
+                }
+            }
+        } finally {
+            zip.close()
+        }
+    }
+}
+
+tasks.named('assemble').configure {
+    dependsOn tasks.named('monolithicJar')
+}
+
+tasks.named('check').configure {
+    dependsOn tasks.named('verifyMonolithicJar')
+}
+
+apply from: 'gradle/rakan-verification.gradle'
+apply from: 'gradle/antares-verification.gradle'
+apply from: 'gradle/merged-client.gradle'

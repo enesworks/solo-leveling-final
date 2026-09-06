@@ -1,0 +1,28 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.eness.sololeveling3.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "SololevelingModBootstrapMixin",
+    "VesselManagerMixin",
+    "SnowRedGateArenaMixin",
+    "LegiaGateLifetimeMixin",
+    "JobSkillManagerMixin",
+    "VesselProgressionManagerMixin",
+    "SungIlHwanCombatManagerMixin",
+    "SkillListHelperMixin",
+    "CartenonTempleManagerAccessor",
+    "StatueOfGodCampaignDamageMixin",
+    "CartenonTempleManagerCampaignBypassMixin",
+    "DungeonReturnReceiptMixin",
+    "RedGateRightClickGuardMixin"
+  ],
+  "client": [
+    "DisplayOverlayMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
+

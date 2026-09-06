@@ -1,0 +1,10 @@
+{
+  "parent": "sololeveling3:story/three_monarchs",
+  "display": {
+    "icon": {"item": "minecraft:dragon_head"},
+    "title": {"text": "Yıkımın Sonu"},
+    "description": {"text": "Tahtındaki Antares'i yen ve ejderha istilasını durdur."},
+    "frame": "challenge", "show_toast": true, "announce_to_chat": false, "hidden": false
+  },
+  "criteria": {"story": {"trigger": "minecraft:impossible"}}
+}

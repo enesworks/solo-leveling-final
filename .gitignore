@@ -1,0 +1,28 @@
+# eclipse
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
+
+# idea
+out
+*.ipr
+*.iws
+*.iml
+.idea
+
+# gradle
+build
+.gradle
+
+# other
+eclipse
+run
+
+# Private binary inputs supplied by the owner
+libs/*.jar
+
+# Files from Forge MDK
+forge*changelog.txt

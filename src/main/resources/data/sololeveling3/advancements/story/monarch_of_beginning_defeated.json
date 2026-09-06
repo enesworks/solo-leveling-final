@@ -1,0 +1,15 @@
+{
+  "parent": "sololeveling3:story/ancient_keys",
+  "display": {
+    "icon": { "item": "minecraft:chain" },
+    "title": { "translate": "advancement.sololeveling3.legia.title" },
+    "description": { "translate": "advancement.sololeveling3.legia.description" },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "story": { "trigger": "minecraft:impossible" }
+  }
+}

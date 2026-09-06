@@ -1,0 +1,15 @@
+{
+  "parent": "sololeveling3:story/monarchs_awaken",
+  "display": {
+    "icon": { "item": "minecraft:blue_ice" },
+    "title": { "translate": "advancement.sololeveling3.ice.title" },
+    "description": { "translate": "advancement.sololeveling3.ice.description" },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "story": { "trigger": "minecraft:impossible" }
+  }
+}

@@ -1,0 +1,106 @@
+import groovy.json.JsonSlurper
+import javax.imageio.ImageIO
+
+tasks.register('verifyRakanResources') {
+    group = 'verification'
+    description = 'Checks the accepted Rakan model and the seven combat clips.'
+    doLast {
+        def parser = new JsonSlurper()
+        def folder = file('Rakan-Animated-Combat-v2')
+        def original = parser.parse(file('Rakan-HD-Wide-Accepted/rakan-hd-wide.bbmodel'))
+        def animated = parser.parse(new File(folder, 'rakan_animated_v2.bbmodel'))
+        ['textures', 'resolution'].each { key ->
+            if (original[key] != animated[key]) throw new GradleException("Rakan ${key} changed from the accepted model")
+        }
+        def names = [] as Set
+        def visit
+        visit = { children -> children.each { child ->
+            if (child instanceof Map) { names.add(child.name); visit(child.children ?: []) }
+        } }
+        visit(animated.outliner)
+        if (names.size() != 11 || animated.elements.size() != 20) throw new GradleException('Articulated Rakan requires 11 bones / 20 partitioned cubes')
+        if (animated.meta.model_format != 'bedrock') throw new GradleException('Blockbench model must support animation editing')
+        def manifest = parser.parse(new File(folder, 'rig_manifest.json'))
+        def hash = { f -> java.security.MessageDigest.getInstance('SHA-256').digest(f.bytes).encodeHex().toString() }
+        if (hash(file('Rakan-HD-Wide-Accepted/rakan-hd-wide.bbmodel')) != '0471b3830d1c0de6b30e111717265398e337a3bb39d499541bdd65cb88a8ea55')
+            throw new GradleException('Original Rakan source was modified')
+        def sourceCubes = original.elements.collectEntries { [(it.uuid):it] }
+        def newCubes = animated.elements.collectEntries { [(it.uuid):it] }
+        manifest.splits.each { split ->
+            def source = sourceCubes[split.source], upper = newCubes[split.upper], lower = newCubes[split.lower]
+            if (upper.to != source.to || lower.from != source.from || upper.from[1] != split.cut_y || lower.to[1] != split.cut_y)
+                throw new GradleException('A split changed original outer bounds')
+            ['north','east','south','west'].each { face ->
+                def a=upper.faces[face].uv, b=lower.faces[face].uv, s=source.faces[face].uv
+                if (a[0]!=s[0] || a[1]!=s[1] || a[2]!=s[2] || b[0]!=s[0] || b[2]!=s[2] || b[3]!=s[3] || a[3]!=b[1])
+                    throw new GradleException('A split changed the exterior atlas mapping')
+            }
+        }
+        def resourceRoot = file('src/main/resources/assets/sololeveling3')
+        fileTree(file('src/main/resources/assets')).matching { include '**/animations/**/*.json' }.each { candidate ->
+            if (!(parser.parse(candidate).animations instanceof Map))
+                throw new GradleException("GeckoLib scans every animations/*.json file; move non-animation metadata out: ${candidate}")
+        }
+        def animations = parser.parse(new File(resourceRoot, 'animations/rakan.animation.json')).animations
+        def expected = [predator_claw_combo: 2.0, guard_start: 0.30, guard_hold: 1.2,
+                        guard_hit: 0.20, guard_counter: 0.40, monarch_pounce: 3.5, beast_monarch_roar: 4.0]
+                .collectEntries { key, value -> [('animation.rakan.' + key): value] }
+        if (animations.keySet() != expected.keySet()) throw new GradleException('Rakan must have exactly the seven requested animation names')
+        if (animated.animations.collect { it.name }.toSet() != expected.keySet()) throw new GradleException('Blockbench clips differ from runtime clips')
+        animations.each { name, clip ->
+            if (expected[name] != null && Math.abs(clip.animation_length - expected[name]) > 0.001)
+                throw new GradleException("Wrong Rakan duration: ${name}")
+            if ((clip.loop == true) != name.endsWith('.guard_hold')) throw new GradleException("Wrong loop mode: ${name}")
+            clip.bones.each { bone, channels ->
+                if (!names.contains(bone)) throw new GradleException("Unknown Rakan bone: ${bone}")
+                if (channels.keySet().any { !(it in ['rotation', 'position']) })
+                    throw new GradleException("Unsupported or scale channel in ${name}/${bone}")
+                if (bone == 'root' && channels.position?.values()?.any { it[0] != 0 || it[2] != 0 })
+                    throw new GradleException('Rakan world travel must remain server controlled')
+            }
+        }
+        parser.parse(new File(folder, 'rakan_animation_events.json'))
+        def atlas = new File(resourceRoot, 'textures/entity/rakan.png')
+        if (atlas.bytes != file('Rakan-HD-Wide-Accepted/rakan-hd-1024.png').bytes) throw new GradleException('Rakan atlas changed')
+        def texture = ImageIO.read(atlas)
+        if (texture.width != 1024 || texture.height != 1024) throw new GradleException('Rakan texture size changed')
+        ['claw_right','claw_left','block','counter','slam','roar'].each { effect ->
+            def particle = parser.parse(new File(resourceRoot, "particles/rakan_${effect}.json"))
+            if (particle.textures != ['sololeveling3:rakan_white']) throw new GradleException("Invalid Rakan VFX atlas binding: ${effect}")
+        }
+        if (ImageIO.read(new File(resourceRoot,'textures/particle/rakan_white.png')) == null)
+            throw new GradleException('Rakan VFX sprite cannot be decoded')
+        def geometry = parser.parse(new File(resourceRoot, 'geo/rakan.geo.json'))['minecraft:geometry'][0]
+        if (geometry.bones.collect { it.name }.toSet() != names || geometry.bones.sum { (it.cubes ?: []).size() } != 20)
+            throw new GradleException('Runtime Rakan geometry lost bones or cubes')
+        logger.lifecycle('Rakan: 7 clips, 11 bones, 20 partitioned cubes; source hash, atlas and exterior UV continuity verified.')
+    }
+}
+
+tasks.named('check').configure { dependsOn tasks.named('verifyRakanResources') }
+
+tasks.named('verifyMonolithicJar').configure {
+    doLast {
+        def bundle = tasks.named('monolithicJar').get().archiveFile.get().asFile
+        new java.util.zip.ZipFile(bundle).withCloseable { zip ->
+            ['dev/eness/sololeveling3/entity/RakanEntity.class',
+             'dev/eness/sololeveling3/entity/RakanVfx.class',
+             'dev/eness/sololeveling3/client/model/RakanModel.class',
+             'dev/eness/sololeveling3/client/renderer/RakanRenderer.class',
+             'dev/eness/sololeveling3/client/particle/RakanCombatParticle.class',
+             'dev/eness/sololeveling3/vfx/RakanVfxMesh.class',
+             'assets/sololeveling3/particles/rakan_claw_right.json',
+             'assets/sololeveling3/particles/rakan_claw_left.json',
+             'assets/sololeveling3/particles/rakan_block.json',
+             'assets/sololeveling3/particles/rakan_counter.json',
+             'assets/sololeveling3/particles/rakan_slam.json',
+             'assets/sololeveling3/particles/rakan_roar.json',
+             'assets/sololeveling3/textures/particle/rakan_white.png',
+             'assets/sololeveling3/geo/rakan.geo.json',
+             'assets/sololeveling3/textures/entity/rakan.png',
+             'assets/sololeveling3/animations/rakan.animation.json'].each { entry ->
+                if (zip.getEntry(entry) == null) throw new GradleException("Rakan missing from final JAR: ${entry}")
+            }
+        }
+    }
+}

@@ -1,0 +1,83 @@
+import groovy.json.JsonSlurper
+
+tasks.register('verifyAntaresResources') {
+    group = 'verification'
+    doLast {
+        def parse = new JsonSlurper()
+        def folder = file('Antares-Animated-Combat')
+        def accepted = parse.parse(file('Antares-Final-Boss/build/antares.bbmodel'))
+        def animated = parse.parse(new File(folder,'antares_animated.bbmodel'))
+        def a = new LinkedHashMap(accepted), b = new LinkedHashMap(animated)
+        a.remove('animations');b.remove('animations')
+        // Animation-only finger controls reparent the existing ten cubes.
+        // Flatten them before comparing with the accepted, untouched model.
+        def flattenFingers
+        flattenFingers={ nodes -> nodes.collectMany { node ->
+            if(!(node instanceof Map))return [node]
+            if(node.name ==~ /(right|left)_(finger_[0-3]|thumb)/)return node.children
+            def copy=new LinkedHashMap(node);copy.children=flattenFingers(node.children ?: []);return [copy]
+        } }
+        b.outliner=flattenFingers(b.outliner)
+        if (a != b) throw new GradleException('Antares accepted cubes, original rig, UV or texture changed')
+        def names=[] as Set
+        def visit
+        visit={ nodes -> nodes.each { if(it instanceof Map){names.add(it.name);visit(it.children ?: [])} } }
+        visit(animated.outliner)
+        if(names.size()!=53||animated.elements.size()!=601)throw new GradleException('Antares rig/geometry count changed')
+        def assets=file('src/main/resources/assets/sololeveling3')
+        def clips=parse.parse(new File(assets,'animations/antares.animation.json')).animations
+        def events=parse.parse(new File(folder,'events.json'))
+        def expected=[destruction_claw_combo:events.durations_ticks.combo/20.0,crimson_ruin_sweep:1.5,dragon_scale_guard:4.0,
+            guard_counter:0.65,condensed_destruction_ray:4.5,idle:3.0,walk:1.0].collectEntries{k,v->[("animation.antares.${k}".toString()):v]}
+        if(clips.keySet()!=expected.keySet())throw new GradleException('Antares clips missing')
+        clips.each { name,clip ->
+            if(Math.abs(clip.animation_length-expected[name])>.0001)throw new GradleException("Antares duration: ${name}")
+            clip.bones.each { bone,channels ->
+                if(!names.contains(bone))throw new GradleException("Unknown Antares bone ${bone}")
+                if(channels.containsKey('scale'))throw new GradleException('Antares cannot distort accepted geometry')
+                if(bone.endsWith('_hand'))channels.rotation.values().each { angles ->
+                    def palm=name.endsWith('.destruction_claw_combo')&&bone=='right_hand'
+                    if(Math.abs(angles[0])>(palm?90:15)||Math.abs(angles[1])>15||Math.abs(angles[2])>15)
+                        throw new GradleException('Excessive wrist bend')
+                }
+            }
+        }
+        ['antares.png':'textures/entity/antares.png'].each { source,dest ->
+            if(file("Antares-Final-Boss/build/${source}").bytes!=new File(assets,dest).bytes)
+                throw new GradleException("Accepted Antares asset changed: ${source}")
+        }
+        def originalGeo=parse.parse(file('Antares-Final-Boss/build/antares.geo.json'))['minecraft:geometry'][0].bones
+        def rigGeo=parse.parse(new File(assets,'geo/antares.geo.json'))['minecraft:geometry'][0].bones
+        originalGeo.each { original ->
+            def current=rigGeo.find{it.name==original.name}
+            def before=new LinkedHashMap(original),after=new LinkedHashMap(current)
+            before.remove('cubes');after.remove('cubes')
+            if(before!=after)throw new GradleException("Original Antares bone changed: ${original.name}")
+            def cubes=(current.cubes ?: [])+rigGeo.findAll{it.parent==original.name&&it.name==~ /(right|left)_(finger_[0-3]|thumb)/}.collectMany{it.cubes ?: []}
+            if(cubes.size()!=(original.cubes ?: []).size()||!cubes.containsAll(original.cubes ?: []))throw new GradleException("Original Antares cubes changed: ${original.name}")
+        }
+        def sockets=parse.parse(new File(assets,'combat/antares_sockets.json'))
+        if(sockets.keySet()!=expected.keySet().collect{it.replace('animation.antares.','')}.toSet())throw new GradleException('Missing VFX sockets')
+        sockets.destruction_claw_combo.each { row ->
+            ['right_claw_1','right_claw_2','right_claw_3','left_claw_1','left_claw_2','left_claw_3','right_palm'].each {
+                if(!row.containsKey(it))throw new GradleException("Missing combo socket: ${it}")
+            }
+        }
+        logger.lifecycle('Antares: 601 accepted cubes / 43 original bones intact + 10 finger controls; 7 clips and VFX sockets verified.')
+    }
+}
+tasks.named('check').configure { dependsOn tasks.named('verifyAntaresResources') }
+tasks.named('verifyMonolithicJar').configure {
+    dependsOn tasks.named('verifyAntaresResources')
+    doLast {
+        new java.util.zip.ZipFile(tasks.named('monolithicJar').get().archiveFile.get().asFile).withCloseable { zip ->
+            ['dev/eness/sololeveling3/entity/AntaresEntity.class','dev/eness/sololeveling3/entity/AntaresAnimationData.class',
+             'dev/eness/sololeveling3/client/model/AntaresModel.class','dev/eness/sololeveling3/client/renderer/AntaresRenderer.class',
+             'dev/eness/sololeveling3/vfx/AntaresVfxMesh.class','assets/sololeveling3/geo/antares.geo.json',
+             'assets/sololeveling3/textures/entity/antares.png','assets/sololeveling3/animations/antares.animation.json',
+             'assets/sololeveling3/combat/antares_sockets.json','data/sololeveling3/damage_type/antares_locked_combo.json',
+             'data/sololeveling3/damage_type/antares_locked_ray.json',
+             'data/minecraft/tags/damage_type/bypasses_shield.json'].each { if(zip.getEntry(it)==null)throw new GradleException("Missing Antares JAR entry ${it}") }
+        }
+    }
+}

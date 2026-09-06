@@ -1,0 +1,10 @@
+{
+  "parent": "sololeveling3:story/monarch_of_beginning_defeated",
+  "display": {
+    "icon": {"item": "minecraft:blue_ice"},
+    "title": {"text": "Donmuş Taht"},
+    "description": {"text": "Baruka'yı yen; Buz Hükümdarı'nı geri çekilmeye zorla."},
+    "frame": "goal", "show_toast": true, "announce_to_chat": false, "hidden": false
+  },
+  "criteria": {"story": {"trigger": "minecraft:impossible"}}
+}

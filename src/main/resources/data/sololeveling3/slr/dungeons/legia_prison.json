@@ -1,0 +1,53 @@
+{
+  "format_version": 3,
+  "generation": "preset",
+  "ranks": ["S"],
+  "structure": "solo_leveling:monarch_of_giants_room",
+  "size": [20, 20, 30],
+  "origin": [0, 0, 0],
+  "level": {
+    "source": "player",
+    "min": 70,
+    "max": 1000,
+    "variance": 4
+  },
+  "shell": {
+    "enabled": false,
+    "block": "minecraft:bedrock",
+    "cover_floor": true,
+    "cover_ceiling": true
+  },
+  "markers": [
+    {
+      "id": "entry",
+      "type": "player_start",
+      "position": [6, 2, 23]
+    },
+    {
+      "id": "return",
+      "type": "return_portal",
+      "position": [7, 1, 23]
+    },
+    {
+      "id": "legia_spawn",
+      "type": "boss_spawn",
+      "group": "legia",
+      "position": [10, 2, 3]
+    }
+  ],
+  "encounters": [
+    {
+      "id": "sealed_monarch",
+      "waves": [
+        {
+          "id": "legia",
+          "marker_group": "legia",
+          "pool": "sololeveling3:legia",
+          "count": 1,
+          "delay_ticks": 20,
+          "boss": true
+        }
+      ]
+    }
+  ]
+}

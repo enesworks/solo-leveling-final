@@ -1,0 +1,15 @@
+{
+  "parent": "sololeveling3:story/double_dungeon_return",
+  "display": {
+    "icon": { "item": "sololeveling3:old_key" },
+    "title": { "translate": "advancement.sololeveling3.keys.title" },
+    "description": { "translate": "advancement.sololeveling3.keys.description" },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "story": { "trigger": "minecraft:impossible" }
+  }
+}
