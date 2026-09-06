@@ -37,27 +37,6 @@ tasks.register('prepareMergedClientMod', Sync) {
     into mergedClientRoot
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
-    from({
-        zipTree(findSingleMappedDependency(
-                'SLR',
-                "private/SLR/1.2.0_mapped_${mapping_channel}_${mapping_version}",
-                "SLR-1.2.0_mapped_${mapping_channel}_${mapping_version}.jar"))
-    }) {
-        exclude 'META-INF/MANIFEST.MF'
-        exclude 'META-INF/mods.toml'
-        exclude 'META-INF/accesstransformer.cfg'
-        exclude 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA'
-        exclude 'data/minecraft/tags/entity_types/soloboss.json'
-        exclude "assets/sololeveling/models/custom/kasaka's_venom_fangs.json"
-        filesMatching('assets/sololeveling/animations/kaiselin.animation.json') {
-            filter { String line -> line.replace('"+math.cos', '"math.cos') }
-        }
-        filesMatching('assets/sololeveling/models/item/emerald_dagger.json') {
-            filter { String line ->
-                line.replace('"missing": "sololeveling:block/"', '"missing": "sololeveling:block/bladetext"')
-            }
-        }
-    }
 
     from({
         zipTree(findSingleMappedDependency(
@@ -81,7 +60,7 @@ tasks.register('prepareMergedClientMod', Sync) {
         exclude 'META-INF/mods.toml'
         exclude 'META-INF/accesstransformer.cfg'
         exclude 'pack.mcmeta'
-        exclude 'dev/eness/sololeveling3/SoloLeveling3Standalone.class'
+        exclude 'dev/eness/sololevelingfinal/core/SoloLeveling3Standalone.class'
     }
 
     from('src/monolithic/resources') {
@@ -132,10 +111,10 @@ tasks.register('verifyMergedClientMod') {
                 'mixins.sololeveling3.json',
                 'geckolib.mixins.json',
                 'geckolib.refmap.json',
-                'net/solocraft/SololevelingMod.class',
+                'dev/eness/sololevelingfinal/core/SololevelingMod.class',
                 'software/bernie/geckolib/GeckoLib.class',
-                'dev/eness/sololeveling3/SoloLeveling3.class',
-                'dev/eness/sololeveling3/mixin/SololevelingModBootstrapMixin.class'
+                'dev/eness/sololevelingfinal/core/SoloLeveling3.class',
+                'dev/eness/sololevelingfinal/core/mixin/SololevelingModBootstrapMixin.class'
         ]
         required.each { relative ->
             File target = new File(root, relative)
@@ -144,7 +123,7 @@ tasks.register('verifyMergedClientMod') {
             }
         }
 
-        if (new File(root, 'dev/eness/sololeveling3/SoloLeveling3Standalone.class').exists()
+        if (new File(root, 'dev/eness/sololevelingfinal/core/SoloLeveling3Standalone.class').exists()
                 || new File(root, 'software/bernie/example/GeckoLibMod.class').exists()) {
             throw new GradleException('A secondary @Mod entry point leaked into the merged client tree.')
         }

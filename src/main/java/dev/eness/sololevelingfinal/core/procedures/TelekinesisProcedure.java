@@ -1,0 +1,211 @@
+package dev.eness.sololevelingfinal.core.procedures;
+
+import java.util.Comparator;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.AbstractArrow;
+import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.registries.ForgeRegistries;
+import dev.eness.sololevelingfinal.core.entity.RulersHandEntity;
+import dev.eness.sololevelingfinal.core.init.SololevelingModEntities;
+import dev.eness.sololevelingfinal.core.network.SololevelingModVariables;
+import dev.eness.sololevelingfinal.core.util.CooldownManager;
+
+public class TelekinesisProcedure {
+   public static void execute(LevelAccessor world, double x, double y, double z, Entity entity) {
+      if (entity != null) {
+         double num_size = 0.0;
+         double num_precision = 0.0;
+         double num_speed = 0.0;
+         double num_cooldown = 0.0;
+         double num_range = 0.0;
+         double num_width = 0.0;
+         double num_delay = 0.0;
+         double num = 0.0;
+         if (entity.isShiftKeyDown()) {
+            if (world instanceof Level _level) {
+               if (!_level.isClientSide()) {
+                  _level.playSound(
+                     (Player)null,
+                     BlockPos.containing(x, y, z),
+                     ForgeRegistries.SOUND_EVENTS.getValue(new ResourceLocation("sololeveling:telepush")),
+                     SoundSource.NEUTRAL,
+                     1.0F,
+                     2.0F
+                  );
+               } else {
+                  _level.playLocalSound(
+                     x, y, z, ForgeRegistries.SOUND_EVENTS.getValue(new ResourceLocation("sololeveling:telepush")), SoundSource.NEUTRAL, 1.0F, 2.0F, false
+                  );
+               }
+            }
+
+            Entity _shootFrom = entity;
+            Level projectileLevel = _shootFrom.level();
+            if (!projectileLevel.isClientSide()) {
+               Projectile _entityToSpawn = (new Object() {
+                  public Projectile getArrow(Level level, Entity shooter, float damage, int knockback) {
+                     AbstractArrow entityToSpawn = new RulersHandEntity(SololevelingModEntities.RULERS_HAND.get(), level);
+                     entityToSpawn.setOwner(shooter);
+                     entityToSpawn.setBaseDamage(damage);
+                     entityToSpawn.setKnockback(knockback);
+                     entityToSpawn.setSilent(true);
+                     return entityToSpawn;
+                  }
+               }).getArrow(projectileLevel, entity, 0.0F, 0);
+               _entityToSpawn.setPos(_shootFrom.getX(), _shootFrom.getEyeY() - 0.1, _shootFrom.getZ());
+               _entityToSpawn.shoot(_shootFrom.getLookAngle().x, _shootFrom.getLookAngle().y, _shootFrom.getLookAngle().z, 10.0F, 0.0F);
+               projectileLevel.addFreshEntity(_entityToSpawn);
+            }
+         } else {
+            Vec3 _center = new Vec3(x, y, z);
+
+            for (Entity entityiterator : world.getEntitiesOfClass(Entity.class, new AABB(_center, _center).inflate(25.0), e -> true)
+               .stream()
+               .sorted(Comparator.comparingDouble(_entcnd -> _entcnd.distanceToSqr(_center)))
+               .toList()) {
+               if (!entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).orElse(new SololevelingModVariables.PlayerVariables())
+                     .party
+                     .equals("")
+                  && !entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).orElse(new SololevelingModVariables.PlayerVariables())
+                     .party
+                     .equals(
+                        entityiterator.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null)
+                              .orElse(new SololevelingModVariables.PlayerVariables())
+                           .party
+                     )) {
+                  if (entity != entityiterator
+                     && !(entityiterator instanceof TamableAnimal _tamIsTamedBy && entity instanceof LivingEntity _livEnt && _tamIsTamedBy.isOwnedBy(_livEnt))) {
+                     num++;
+                  }
+               } else if (entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null)
+                        .orElse(new SololevelingModVariables.PlayerVariables())
+                     .party
+                     .equals("")
+                  && entity != entityiterator
+                  && !(entityiterator instanceof TamableAnimal _tamIsTamedBy && entity instanceof LivingEntity _livEnt && _tamIsTamedBy.isOwnedBy(_livEnt))) {
+                  num++;
+               }
+            }
+
+            if (entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).orElse(new SololevelingModVariables.PlayerVariables()).MP
+               >= num * 100.0) {
+               if (entity instanceof Player _player && !_player.level().isClientSide()) {
+                  _player.displayClientMessage(Component.literal("§3Using Telekinesis Push"), false);
+               }
+
+               if (world instanceof Level _level) {
+                  if (!_level.isClientSide()) {
+                     _level.playSound(
+                        (Player)null,
+                        BlockPos.containing(x, y, z),
+                        ForgeRegistries.SOUND_EVENTS.getValue(new ResourceLocation("sololeveling:telepush")),
+                        SoundSource.NEUTRAL,
+                        1.0F,
+                        1.0F
+                     );
+                  } else {
+                     _level.playLocalSound(
+                        x, y, z, ForgeRegistries.SOUND_EVENTS.getValue(new ResourceLocation("sololeveling:telepush")), SoundSource.NEUTRAL, 1.0F, 1.0F, false
+                     );
+                  }
+               }
+
+               _center = new Vec3(x, y, z);
+
+               for (Entity entityiterator : world.getEntitiesOfClass(Entity.class, new AABB(_center, _center).inflate(25.0), e -> true)
+                  .stream()
+                  .sorted(Comparator.comparingDouble(_entcnd -> _entcnd.distanceToSqr(_center)))
+                  .toList()) {
+                  if (entity != entityiterator
+                     && !(entityiterator instanceof TamableAnimal _tamIsTamedBy && entity instanceof LivingEntity _livEnt && _tamIsTamedBy.isOwnedBy(_livEnt))) {
+                     if (!entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null)
+                              .orElse(new SololevelingModVariables.PlayerVariables())
+                           .party
+                           .equals("")
+                        && !entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null)
+                              .orElse(new SololevelingModVariables.PlayerVariables())
+                           .party
+                           .equals(
+                              entityiterator.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null)
+                                    .orElse(new SololevelingModVariables.PlayerVariables())
+                                 .party
+                           )) {
+                        entityiterator.setDeltaMovement(
+                           new Vec3(
+                              (entityiterator.getX() - entity.getX())
+                                 * (
+                                    1.0
+                                       / Math.cbrt(
+                                          Math.pow(entityiterator.getX() - entity.getX(), 2.0)
+                                             + Math.pow(entityiterator.getY() - entity.getY(), 2.0)
+                                             + Math.pow(entityiterator.getZ() - entity.getZ(), 2.0)
+                                       )
+                                 ),
+                              0.5,
+                              (entityiterator.getZ() - entity.getZ())
+                                 * (
+                                    1.0
+                                       / Math.cbrt(
+                                          Math.pow(entityiterator.getX() - entity.getX(), 2.0)
+                                             + Math.pow(entityiterator.getY() - entity.getY(), 2.0)
+                                             + Math.pow(entityiterator.getZ() - entity.getZ(), 2.0)
+                                       )
+                                 )
+                           )
+                        );
+                        CooldownManager.set(entity, "mana_refresh", 10);
+                        CooldownManager.set(entity, "telekinesis", 50);
+                     } else if (entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null)
+                           .orElse(new SololevelingModVariables.PlayerVariables())
+                        .party
+                        .equals("")) {
+                        entityiterator.setDeltaMovement(
+                           new Vec3(
+                              (entityiterator.getX() - entity.getX())
+                                 * (
+                                    1.0
+                                       / Math.cbrt(
+                                          Math.pow(entityiterator.getX() - entity.getX(), 2.0)
+                                             + Math.pow(entityiterator.getY() - entity.getY(), 2.0)
+                                             + Math.pow(entityiterator.getZ() - entity.getZ(), 2.0)
+                                       )
+                                 ),
+                              0.5,
+                              (entityiterator.getZ() - entity.getZ())
+                                 * (
+                                    1.0
+                                       / Math.cbrt(
+                                          Math.pow(entityiterator.getX() - entity.getX(), 2.0)
+                                             + Math.pow(entityiterator.getY() - entity.getY(), 2.0)
+                                             + Math.pow(entityiterator.getZ() - entity.getZ(), 2.0)
+                                       )
+                                 )
+                           )
+                        );
+                        CooldownManager.set(entity, "mana_refresh", 20);
+                        CooldownManager.set(entity, "telekinesis", 60);
+                     }
+                  }
+               }
+            } else {
+               CooldownManager.set(entity, "mana_refresh", 10);
+               CooldownManager.set(entity, "telekinesis", 20);
+               if (entity instanceof Player _player && !_player.level().isClientSide()) {
+                  _player.displayClientMessage(Component.literal("§4Not enough mana!"), false);
+               }
+            }
+         }
+      }
+   }
+}

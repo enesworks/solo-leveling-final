@@ -1,0 +1,88 @@
+{
+  "mappings": {
+    "dev/eness/sololevelingfinal/core/mixins/DkcSkyMixin": {
+      "renderClouds": "Lnet/minecraft/client/renderer/LevelRenderer;m_253054_(Lcom/mojang/blaze3d/vertex/PoseStack;Lorg/joml/Matrix4f;FDDD)V",
+      "renderSky": "Lnet/minecraft/client/renderer/LevelRenderer;m_202423_(Lcom/mojang/blaze3d/vertex/PoseStack;Lorg/joml/Matrix4f;FLnet/minecraft/client/Camera;ZLjava/lang/Runnable;)V"
+    },
+    "dev/eness/sololevelingfinal/core/mixins/DisableHotbarKeymappingMixin": {
+      "consumeClick": "Lnet/minecraft/client/KeyMapping;m_90859_()Z"
+    },
+    "dev/eness/sololevelingfinal/core/mixins/SungIlHwanAttackMixin": {
+      "startAttack": "Lnet/minecraft/client/Minecraft;m_202354_()Z"
+    },
+    "dev/eness/sololevelingfinal/core/mixins/LiuManifestedSwordMenuMixin": {
+      "clicked": "Lnet/minecraft/world/inventory/AbstractContainerMenu;m_150399_(IILnet/minecraft/world/inventory/ClickType;Lnet/minecraft/world/entity/player/Player;)V"
+    },
+    "dev/eness/sololevelingfinal/core/mixins/VillageJigsawPlacementMixin": {
+      "findGenerationPoint(Lnet/minecraft/world/level/levelgen/structure/Structure$GenerationContext;)Ljava/util/Optional;": "Lnet/minecraft/world/level/levelgen/structure/structures/JigsawStructure;m_214086_(Lnet/minecraft/world/level/levelgen/structure/Structure$GenerationContext;)Ljava/util/Optional;"
+    },
+    "dev/eness/sololevelingfinal/core/mixins/VesselCombatAttackMixin": {
+      "startAttack": "Lnet/minecraft/client/Minecraft;m_202354_()Z",
+      "continueAttack": "Lnet/minecraft/client/Minecraft;m_91386_(Z)V"
+    },
+    "dev/eness/sololevelingfinal/core/mixins/CreateWorldScreenMixin": {
+      "init": "Lnet/minecraft/client/gui/screens/worldselection/CreateWorldScreen;m_7856_()V",
+      "Lnet/minecraft/client/gui/components/tabs/TabNavigationBar$Builder;addTabs([Lnet/minecraft/client/gui/components/tabs/Tab;)Lnet/minecraft/client/gui/components/tabs/TabNavigationBar$Builder;": "Lnet/minecraft/client/gui/components/tabs/TabNavigationBar$Builder;m_267824_([Lnet/minecraft/client/gui/components/tabs/Tab;)Lnet/minecraft/client/gui/components/tabs/TabNavigationBar$Builder;"
+    },
+    "dev/eness/sololevelingfinal/core/mixins/EntityHighlightColorMixin": {
+      "render": "Lnet/minecraft/client/renderer/entity/EntityRenderDispatcher;m_114384_(Lnet/minecraft/world/entity/Entity;DDDFFLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V"
+    },
+    "dev/eness/sololevelingfinal/core/mixins/EntityHighlightVisibilityMixin": {
+      "shouldEntityAppearGlowing": "Lnet/minecraft/client/Minecraft;m_91314_(Lnet/minecraft/world/entity/Entity;)Z"
+    },
+    "dev/eness/sololevelingfinal/core/mixins/GoliathFirstPersonHandMixin": {
+      "renderArmWithItem": "Lnet/minecraft/client/renderer/ItemInHandRenderer;m_109371_(Lnet/minecraft/client/player/AbstractClientPlayer;FFLnet/minecraft/world/InteractionHand;FLnet/minecraft/world/item/ItemStack;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V"
+    },
+    "dev/eness/sololevelingfinal/core/mixins/GoliathThirdPersonHandMixin": {
+      "renderArmWithItem": "Lnet/minecraft/client/renderer/entity/layers/ItemInHandLayer;m_117184_(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemDisplayContext;Lnet/minecraft/world/entity/HumanoidArm;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V"
+    },
+    "dev/eness/sololevelingfinal/core/mixins/RangerNockedArrowMixin": {
+      "Lcom/mojang/blaze3d/vertex/PoseStack;popPose()V": "Lcom/mojang/blaze3d/vertex/PoseStack;m_85849_()V",
+      "render": "Lnet/minecraft/client/renderer/entity/ItemRenderer;m_115143_(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemDisplayContext;ZLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;IILnet/minecraft/client/resources/model/BakedModel;)V"
+    }
+  },
+  "data": {
+    "searge": {
+      "dev/eness/sololevelingfinal/core/mixins/DkcSkyMixin": {
+        "renderClouds": "Lnet/minecraft/client/renderer/LevelRenderer;m_253054_(Lcom/mojang/blaze3d/vertex/PoseStack;Lorg/joml/Matrix4f;FDDD)V",
+        "renderSky": "Lnet/minecraft/client/renderer/LevelRenderer;m_202423_(Lcom/mojang/blaze3d/vertex/PoseStack;Lorg/joml/Matrix4f;FLnet/minecraft/client/Camera;ZLjava/lang/Runnable;)V"
+      },
+      "dev/eness/sololevelingfinal/core/mixins/DisableHotbarKeymappingMixin": {
+        "consumeClick": "Lnet/minecraft/client/KeyMapping;m_90859_()Z"
+      },
+      "dev/eness/sololevelingfinal/core/mixins/SungIlHwanAttackMixin": {
+        "startAttack": "Lnet/minecraft/client/Minecraft;m_202354_()Z"
+      },
+      "dev/eness/sololevelingfinal/core/mixins/LiuManifestedSwordMenuMixin": {
+        "clicked": "Lnet/minecraft/world/inventory/AbstractContainerMenu;m_150399_(IILnet/minecraft/world/inventory/ClickType;Lnet/minecraft/world/entity/player/Player;)V"
+      },
+      "dev/eness/sololevelingfinal/core/mixins/VillageJigsawPlacementMixin": {
+        "findGenerationPoint(Lnet/minecraft/world/level/levelgen/structure/Structure$GenerationContext;)Ljava/util/Optional;": "Lnet/minecraft/world/level/levelgen/structure/structures/JigsawStructure;m_214086_(Lnet/minecraft/world/level/levelgen/structure/Structure$GenerationContext;)Ljava/util/Optional;"
+      },
+      "dev/eness/sololevelingfinal/core/mixins/VesselCombatAttackMixin": {
+        "startAttack": "Lnet/minecraft/client/Minecraft;m_202354_()Z",
+        "continueAttack": "Lnet/minecraft/client/Minecraft;m_91386_(Z)V"
+      },
+      "dev/eness/sololevelingfinal/core/mixins/CreateWorldScreenMixin": {
+        "init": "Lnet/minecraft/client/gui/screens/worldselection/CreateWorldScreen;m_7856_()V",
+        "Lnet/minecraft/client/gui/components/tabs/TabNavigationBar$Builder;addTabs([Lnet/minecraft/client/gui/components/tabs/Tab;)Lnet/minecraft/client/gui/components/tabs/TabNavigationBar$Builder;": "Lnet/minecraft/client/gui/components/tabs/TabNavigationBar$Builder;m_267824_([Lnet/minecraft/client/gui/components/tabs/Tab;)Lnet/minecraft/client/gui/components/tabs/TabNavigationBar$Builder;"
+      },
+      "dev/eness/sololevelingfinal/core/mixins/EntityHighlightColorMixin": {
+        "render": "Lnet/minecraft/client/renderer/entity/EntityRenderDispatcher;m_114384_(Lnet/minecraft/world/entity/Entity;DDDFFLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V"
+      },
+      "dev/eness/sololevelingfinal/core/mixins/EntityHighlightVisibilityMixin": {
+        "shouldEntityAppearGlowing": "Lnet/minecraft/client/Minecraft;m_91314_(Lnet/minecraft/world/entity/Entity;)Z"
+      },
+      "dev/eness/sololevelingfinal/core/mixins/GoliathFirstPersonHandMixin": {
+        "renderArmWithItem": "Lnet/minecraft/client/renderer/ItemInHandRenderer;m_109371_(Lnet/minecraft/client/player/AbstractClientPlayer;FFLnet/minecraft/world/InteractionHand;FLnet/minecraft/world/item/ItemStack;FLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V"
+      },
+      "dev/eness/sololevelingfinal/core/mixins/GoliathThirdPersonHandMixin": {
+        "renderArmWithItem": "Lnet/minecraft/client/renderer/entity/layers/ItemInHandLayer;m_117184_(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemDisplayContext;Lnet/minecraft/world/entity/HumanoidArm;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;I)V"
+      },
+      "dev/eness/sololevelingfinal/core/mixins/RangerNockedArrowMixin": {
+        "Lcom/mojang/blaze3d/vertex/PoseStack;popPose()V": "Lcom/mojang/blaze3d/vertex/PoseStack;m_85849_()V",
+        "render": "Lnet/minecraft/client/renderer/entity/ItemRenderer;m_115143_(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemDisplayContext;ZLcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;IILnet/minecraft/client/resources/model/BakedModel;)V"
+      }
+    }
+  }
+}

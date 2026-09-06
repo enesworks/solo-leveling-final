@@ -1,0 +1,10 @@
+package dev.eness.sololevelingfinal.core.procedures;
+
+import net.minecraft.world.entity.Entity;
+import dev.eness.sololevelingfinal.core.util.CooldownManager;
+
+public class IsCD4OnCooldownProcedure {
+   public static boolean execute(Entity entity) {
+      return entity == null ? false : CooldownManager.isOnCooldown(entity, "job_4");
+   }
+}

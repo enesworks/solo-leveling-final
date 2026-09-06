@@ -1,0 +1,77 @@
+package dev.eness.sololevelingfinal.core.procedures;
+
+import com.mojang.brigadier.arguments.BoolArgumentType;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import java.text.DecimalFormat;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.world.entity.Entity;
+import dev.eness.sololevelingfinal.core.network.SololevelingModVariables;
+import dev.eness.sololevelingfinal.core.util.RewardManager;
+
+public class SLRRewardSetSkillPointsProcedure {
+   public static void execute(CommandContext<CommandSourceStack> arguments) {
+      boolean collect_prev_reward = false;
+      String reward_to_recieve = "";
+      String reward_to_assign = "";
+      double reward_slot = 0.0;
+      double SP_amount = 0.0;
+      reward_slot = DoubleArgumentType.getDouble(arguments, "slot");
+      SP_amount = DoubleArgumentType.getDouble(arguments, "amount");
+      collect_prev_reward = BoolArgumentType.getBool(arguments, "AutoCollect");
+      reward_to_assign = "SP" + new DecimalFormat("##").format(SP_amount);
+
+      try {
+         for (Entity entityiterator : EntityArgument.getEntities(arguments, "name")) {
+            if (reward_slot == 1.0) {
+               reward_to_recieve = entityiterator.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null)
+                     .orElse(new SololevelingModVariables.PlayerVariables())
+                  .reward_1;
+               if (collect_prev_reward) {
+                  RewardManager.appendReward(entityiterator, reward_to_recieve);
+               }
+
+               String _setval = reward_to_assign;
+               entityiterator.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).ifPresent(capability -> {
+                  capability.reward_1 = _setval;
+                  capability.syncPlayerVariables(entityiterator);
+               });
+            }
+
+            if (reward_slot == 2.0) {
+               reward_to_recieve = entityiterator.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null)
+                     .orElse(new SololevelingModVariables.PlayerVariables())
+                  .reward_2;
+               if (collect_prev_reward) {
+                  RewardManager.appendReward(entityiterator, reward_to_recieve);
+               }
+
+               String _setval = reward_to_assign;
+               entityiterator.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).ifPresent(capability -> {
+                  capability.reward_2 = _setval;
+                  capability.syncPlayerVariables(entityiterator);
+               });
+            }
+
+            if (reward_slot == 3.0) {
+               reward_to_recieve = entityiterator.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null)
+                     .orElse(new SololevelingModVariables.PlayerVariables())
+                  .reward_3;
+               if (collect_prev_reward) {
+                  RewardManager.appendReward(entityiterator, reward_to_recieve);
+               }
+
+               String _setval = reward_to_assign;
+               entityiterator.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).ifPresent(capability -> {
+                  capability.reward_3 = _setval;
+                  capability.syncPlayerVariables(entityiterator);
+               });
+            }
+         }
+      } catch (CommandSyntaxException e) {
+         e.printStackTrace();
+      }
+   }
+}

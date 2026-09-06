@@ -1,0 +1,38 @@
+package dev.eness.sololevelingfinal.core.client.renderer.shader;
+
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import net.minecraft.client.renderer.ShaderInstance;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.RegisterShadersEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber.Bus;
+import dev.eness.sololevelingfinal.core.SololevelingMod;
+
+@EventBusSubscriber(modid = "sololeveling", bus = Bus.MOD, value = Dist.CLIENT)
+public final class OrbOfAvariceTooltipRenderTypes {
+   private static ShaderInstance tooltipShader;
+
+   private OrbOfAvariceTooltipRenderTypes() {
+   }
+
+   @SubscribeEvent
+   public static void registerShaders(RegisterShadersEvent event) {
+      try {
+         event.registerShader(
+            new ShaderInstance(
+               event.getResourceProvider(), new ResourceLocation("sololeveling", "rendertype_orb_of_avarice_tooltip"), DefaultVertexFormat.POSITION_TEX
+            ),
+            shader -> tooltipShader = shader
+         );
+      } catch (Exception exception) {
+         tooltipShader = null;
+         SololevelingMod.LOGGER.warn("Failed to load the Orb of Avarice tooltip shader; using the static appraisal background.", exception);
+      }
+   }
+
+   public static ShaderInstance get() {
+      return tooltipShader;
+   }
+}

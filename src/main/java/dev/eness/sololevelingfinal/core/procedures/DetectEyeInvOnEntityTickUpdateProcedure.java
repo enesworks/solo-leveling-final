@@ -1,0 +1,107 @@
+package dev.eness.sololevelingfinal.core.procedures;
+
+import java.util.Comparator;
+import java.util.List;
+import java.util.UUID;
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.registries.ForgeRegistries;
+import dev.eness.sololevelingfinal.core.util.EntityHighlightSystem;
+
+public class DetectEyeInvOnEntityTickUpdateProcedure {
+   public static void execute(LevelAccessor world, double x, double y, double z, Entity entity) {
+      if (entity != null) {
+         Vec3 _center = new Vec3(x, y, z);
+         List<Entity> _entfound = world.getEntitiesOfClass(Entity.class, new AABB(_center, _center).inflate(12.5), e -> true)
+            .stream()
+            .sorted(Comparator.comparingDouble(_entcnd -> _entcnd.distanceToSqr(_center)))
+            .toList();
+         ServerPlayer viewer = world instanceof ServerLevel level ? viewerFor(level, entity) : null;
+         String highlightSource = "skill:detection_eye:" + entity.getUUID();
+
+         for (Entity entityiterator : _entfound) {
+            if (entityiterator instanceof LivingEntity _livEnt0 && _livEnt0.hasEffect(MobEffects.INVISIBILITY)) {
+               if (world instanceof Level _level) {
+                  if (!_level.isClientSide()) {
+                     _level.playSound(
+                        (Player)null,
+                        BlockPos.containing(entityiterator.getX(), entityiterator.getY(), entityiterator.getZ()),
+                        ForgeRegistries.SOUND_EVENTS.getValue(new ResourceLocation("block.glass.break")),
+                        SoundSource.NEUTRAL,
+                        0.5F,
+                        1.0F
+                     );
+                  } else {
+                     _level.playLocalSound(
+                        entityiterator.getX(),
+                        entityiterator.getY(),
+                        entityiterator.getZ(),
+                        ForgeRegistries.SOUND_EVENTS.getValue(new ResourceLocation("block.glass.break")),
+                        SoundSource.NEUTRAL,
+                        0.5F,
+                        1.0F,
+                        false
+                     );
+                  }
+               }
+
+               world.levelEvent(
+                  2001, BlockPos.containing(entityiterator.getX(), entityiterator.getY(), entityiterator.getZ()), Block.getId(Blocks.GLASS.defaultBlockState())
+               );
+               world.levelEvent(
+                  2001, BlockPos.containing(entityiterator.getX(), entityiterator.getY(), entityiterator.getZ()), Block.getId(Blocks.GLASS.defaultBlockState())
+               );
+               world.levelEvent(
+                  2001, BlockPos.containing(entityiterator.getX(), entityiterator.getY(), entityiterator.getZ()), Block.getId(Blocks.GLASS.defaultBlockState())
+               );
+               world.levelEvent(
+                  2001, BlockPos.containing(entityiterator.getX(), entityiterator.getY(), entityiterator.getZ()), Block.getId(Blocks.GLASS.defaultBlockState())
+               );
+               if (entityiterator instanceof LivingEntity _entity) {
+                  _entity.removeEffect(MobEffects.INVISIBILITY);
+               }
+            }
+
+            if (viewer != null
+               && entity.tickCount % 10 == 0
+               && entityiterator != entity
+               && entityiterator != viewer
+               && entityiterator instanceof LivingEntity target
+               && EntityHighlightSystem.isPerceptionCandidate(target)) {
+               EntityHighlightSystem.show(viewer, target, highlightSource, EntityHighlightSystem.perceptionColor(target), 25, 150);
+            }
+         }
+
+         entity.setDeltaMovement(new Vec3(0.0, 0.0, 0.0));
+         if (!(entity instanceof LivingEntity _livEnt26 && _livEnt26.hasEffect(MobEffects.DIG_SPEED)) && !entity.level().isClientSide()) {
+            entity.discard();
+         }
+      }
+   }
+
+   private static ServerPlayer viewerFor(ServerLevel level, Entity detector) {
+      String viewerId = detector.getPersistentData().getString("slr_highlight_viewer");
+      if (viewerId.isBlank()) {
+         return null;
+      }
+
+      try {
+         return level.getServer().getPlayerList().getPlayer(UUID.fromString(viewerId));
+      } catch (IllegalArgumentException ignored) {
+         return null;
+      }
+   }
+}

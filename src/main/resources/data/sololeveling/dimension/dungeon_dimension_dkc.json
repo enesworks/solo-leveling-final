@@ -1,0 +1,34 @@
+{
+  "type": "sololeveling:dungeon_dimension_dkc",
+  "generator": {
+    "type": "minecraft:flat",
+    "settings": {
+      "biome": "sololeveling:dungeon_biome_dkc",
+      "lakes": false,
+      "features": false,
+      "layers": [
+        {
+          "height": 1,
+          "block": "minecraft:bedrock"
+        },
+        {
+          "height": 23,
+          "block": "minecraft:deepslate"
+        },
+        {
+          "height": 5,
+          "block": "minecraft:basalt"
+        },
+        {
+          "height": 2,
+          "block": "minecraft:blackstone"
+        },
+        {
+          "height": 1,
+          "block": "minecraft:cracked_polished_blackstone_bricks"
+        }
+      ],
+      "structure_overrides": []
+    }
+  }
+}

@@ -71,9 +71,9 @@ tasks.named('verifyMonolithicJar').configure {
     dependsOn tasks.named('verifyAntaresResources')
     doLast {
         new java.util.zip.ZipFile(tasks.named('monolithicJar').get().archiveFile.get().asFile).withCloseable { zip ->
-            ['dev/eness/sololeveling3/entity/AntaresEntity.class','dev/eness/sololeveling3/entity/AntaresAnimationData.class',
-             'dev/eness/sololeveling3/client/model/AntaresModel.class','dev/eness/sololeveling3/client/renderer/AntaresRenderer.class',
-             'dev/eness/sololeveling3/vfx/AntaresVfxMesh.class','assets/sololeveling3/geo/antares.geo.json',
+            ['dev/eness/sololevelingfinal/core/entity/AntaresEntity.class','dev/eness/sololevelingfinal/core/entity/AntaresAnimationData.class',
+             'dev/eness/sololevelingfinal/core/client/model/AntaresModel.class','dev/eness/sololevelingfinal/core/client/renderer/AntaresRenderer.class',
+             'dev/eness/sololevelingfinal/core/vfx/AntaresVfxMesh.class','assets/sololeveling3/geo/antares.geo.json',
              'assets/sololeveling3/textures/entity/antares.png','assets/sololeveling3/animations/antares.animation.json',
              'assets/sololeveling3/combat/antares_sockets.json','data/sololeveling3/damage_type/antares_locked_combo.json',
              'data/sololeveling3/damage_type/antares_locked_ray.json',

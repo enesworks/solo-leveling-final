@@ -1,0 +1,24 @@
+{
+  "required": true,
+  "package": "dev.eness.sololevelingfinal.core.mixins",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "mixins.sololeveling.refmap.json",
+  "mixins": [
+    "DisableHotbarKeymappingMixin",
+    "LiuManifestedSwordMenuMixin",
+    "SMixin",
+    "VillageJigsawPlacementMixin"
+  ],
+  "client": [
+    "CreateWorldScreenMixin",
+    "DkcSkyMixin",
+    "EntityHighlightColorMixin",
+    "EntityHighlightVisibilityMixin",
+    "GoliathFirstPersonHandMixin",
+    "GoliathThirdPersonHandMixin",
+    "RangerNockedArrowMixin",
+    "SungIlHwanAttackMixin",
+    "VesselCombatAttackMixin"
+  ],
+  "minVersion": "0.8"
+}

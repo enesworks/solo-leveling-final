@@ -1,0 +1,59 @@
+package dev.eness.sololevelingfinal.core.network;
+
+import java.util.function.Supplier;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber.Bus;
+import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.minecraftforge.network.NetworkEvent.Context;
+import dev.eness.sololevelingfinal.core.SololevelingMod;
+
+@EventBusSubscriber(bus = Bus.MOD)
+public class Ab1Message {
+   int type;
+   int pressedms;
+
+   public Ab1Message(int type, int pressedms) {
+      this.type = type;
+      this.pressedms = pressedms;
+   }
+
+   public Ab1Message(FriendlyByteBuf buffer) {
+      this.type = buffer.readInt();
+      this.pressedms = buffer.readInt();
+   }
+
+   public static void buffer(Ab1Message message, FriendlyByteBuf buffer) {
+      buffer.writeInt(message.type);
+      buffer.writeInt(message.pressedms);
+   }
+
+   public static void handler(Ab1Message message, Supplier<Context> contextSupplier) {
+      Context context = contextSupplier.get();
+      context.enqueueWork(() -> pressAction(context.getSender(), message.type, message.pressedms));
+      context.setPacketHandled(true);
+   }
+
+   public static void pressAction(Player entity, int type, int pressedms) {
+      Level world = entity.level();
+      if (world.hasChunkAt(entity.blockPosition())) {
+         if (type == 0) {
+            entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).ifPresent(capability -> {
+               if (capability.combatmode) {
+                  capability.PselectedPower = capability.Pslot1;
+                  capability.Skillcycle = 1.0;
+                  capability.syncPlayerVariables(entity);
+               }
+            });
+         }
+      }
+   }
+
+   @SubscribeEvent
+   public static void registerMessage(FMLCommonSetupEvent event) {
+      SololevelingMod.addNetworkMessage(Ab1Message.class, Ab1Message::buffer, Ab1Message::new, Ab1Message::handler);
+   }
+}

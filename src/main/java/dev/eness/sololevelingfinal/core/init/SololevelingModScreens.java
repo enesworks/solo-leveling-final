@@ -1,0 +1,105 @@
+package dev.eness.sololevelingfinal.core.init;
+
+import net.minecraft.client.gui.screens.MenuScreens;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber.Bus;
+import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
+import dev.eness.sololevelingfinal.core.client.gui.AbilitiesGUIScreen;
+import dev.eness.sololevelingfinal.core.client.gui.AhjinJoinScreen;
+import dev.eness.sololevelingfinal.core.client.gui.ChooseClassScreen;
+import dev.eness.sololevelingfinal.core.client.gui.DailyQuestsScreen;
+import dev.eness.sololevelingfinal.core.client.gui.EquippedAbilitiesScreen;
+import dev.eness.sololevelingfinal.core.client.gui.FireGriamoreScreen;
+import dev.eness.sololevelingfinal.core.client.gui.FoodGuiScreen;
+import dev.eness.sololevelingfinal.core.client.gui.GuildComputerScreen;
+import dev.eness.sololevelingfinal.core.client.gui.HunterIDGuiScreen;
+import dev.eness.sololevelingfinal.core.client.gui.HuntersJoinScreen;
+import dev.eness.sololevelingfinal.core.client.gui.MiscItemsScreen;
+import dev.eness.sololevelingfinal.core.client.gui.PanelEarlyScreen;
+import dev.eness.sololevelingfinal.core.client.gui.PanelRework2Screen;
+import dev.eness.sololevelingfinal.core.client.gui.PanelReworkScreen;
+import dev.eness.sololevelingfinal.core.client.gui.PathScreen;
+import dev.eness.sololevelingfinal.core.client.gui.PocketDimensionGUIScreen;
+import dev.eness.sololevelingfinal.core.client.gui.QuestsScreen;
+import dev.eness.sololevelingfinal.core.client.gui.ReaderGUIScreen;
+import dev.eness.sololevelingfinal.core.client.gui.RewardPanelScreen;
+import dev.eness.sololevelingfinal.core.client.gui.SelectionBoxGUIScreen;
+import dev.eness.sololevelingfinal.core.client.gui.ShadowCommandScreen;
+import dev.eness.sololevelingfinal.core.client.gui.ShadowCustomizationScreen;
+import dev.eness.sololevelingfinal.core.client.gui.ShadowDismissScreen;
+import dev.eness.sololevelingfinal.core.client.gui.ShadowExchangeMainGUIScreen;
+import dev.eness.sololevelingfinal.core.client.gui.ShadowExchangeSETScreen;
+import dev.eness.sololevelingfinal.core.client.gui.ShadowExchangeSaveScreen;
+import dev.eness.sololevelingfinal.core.client.gui.ShadowGUIScreen;
+import dev.eness.sololevelingfinal.core.client.gui.ShadowSummonGUIScreen;
+import dev.eness.sololevelingfinal.core.client.gui.ShopScreen;
+import dev.eness.sololevelingfinal.core.client.gui.SpecialCraftingGUIScreen;
+import dev.eness.sololevelingfinal.core.client.gui.StoreGUIScreen;
+import dev.eness.sololevelingfinal.core.client.gui.StorePotionNewScreen;
+import dev.eness.sololevelingfinal.core.client.gui.StoreWeaponReworkScreen;
+import dev.eness.sololevelingfinal.core.client.gui.StoreWeaponScreen;
+import dev.eness.sololevelingfinal.core.client.gui.StorepotionScreen;
+import dev.eness.sololevelingfinal.core.client.gui.TrainingGUIScreen;
+import dev.eness.sololevelingfinal.core.client.gui.UnlockedSkillsTab1Screen;
+import dev.eness.sololevelingfinal.core.client.gui.UnlockedSkillsTab2Screen;
+import dev.eness.sololevelingfinal.core.client.gui.UnlockedSkillsTab3Screen;
+import dev.eness.sololevelingfinal.core.client.gui.UnlockedSkillsTab4Screen;
+import dev.eness.sololevelingfinal.core.client.gui.UnlockedSkillsTab5Screen;
+import dev.eness.sololevelingfinal.core.client.gui.UnlockedSkillsTab6Screen;
+import dev.eness.sololevelingfinal.core.client.gui.UnlockedSkillsTab7Screen;
+import dev.eness.sololevelingfinal.core.client.gui.WTJoinScreen;
+
+@EventBusSubscriber(bus = Bus.MOD, value = Dist.CLIENT)
+public class SololevelingModScreens {
+   @SubscribeEvent
+   public static void clientLoad(FMLClientSetupEvent event) {
+      event.enqueueWork(() -> {
+         MenuScreens.register(SololevelingModMenus.PANEL_EARLY.get(), PanelEarlyScreen::new);
+         MenuScreens.register(SololevelingModMenus.REWARD_PANEL.get(), RewardPanelScreen::new);
+         MenuScreens.register(SololevelingModMenus.TRAINING_GUI.get(), TrainingGUIScreen::new);
+         MenuScreens.register(SololevelingModMenus.AHJIN_JOIN.get(), AhjinJoinScreen::new);
+         MenuScreens.register(SololevelingModMenus.STORE_GUI.get(), StoreGUIScreen::new);
+         MenuScreens.register(SololevelingModMenus.STORE_WEAPON.get(), StoreWeaponScreen::new);
+         MenuScreens.register(SololevelingModMenus.STOREPOTION.get(), StorepotionScreen::new);
+         MenuScreens.register(SololevelingModMenus.ABILITIES_GUI.get(), AbilitiesGUIScreen::new);
+         MenuScreens.register(SololevelingModMenus.POCKET_DIMENSION_GUI.get(), PocketDimensionGUIScreen::new);
+         MenuScreens.register(SololevelingModMenus.CHOOSE_CLASS.get(), ChooseClassScreen::new);
+         MenuScreens.register(SololevelingModMenus.SPECIAL_CRAFTING_GUI.get(), SpecialCraftingGUIScreen::new);
+         MenuScreens.register(SololevelingModMenus.FIRE_GRIAMORE.get(), FireGriamoreScreen::new);
+         MenuScreens.register(SololevelingModMenus.SHADOW_GUI.get(), ShadowGUIScreen::new);
+         MenuScreens.register(SololevelingModMenus.HUNTERS_JOIN.get(), HuntersJoinScreen::new);
+         MenuScreens.register(SololevelingModMenus.WT_JOIN.get(), WTJoinScreen::new);
+         MenuScreens.register(SololevelingModMenus.DAILY_QUESTS.get(), DailyQuestsScreen::new);
+         MenuScreens.register(SololevelingModMenus.STORE_WEAPON_REWORK.get(), StoreWeaponReworkScreen::new);
+         MenuScreens.register(SololevelingModMenus.SHOP.get(), ShopScreen::new);
+         MenuScreens.register(SololevelingModMenus.FOOD_GUI.get(), FoodGuiScreen::new);
+         MenuScreens.register(SololevelingModMenus.SHADOW_SUMMON_GUI.get(), ShadowSummonGUIScreen::new);
+         MenuScreens.register(SololevelingModMenus.SHADOW_CUSTOMIZATION.get(), ShadowCustomizationScreen::new);
+         MenuScreens.register(SololevelingModMenus.SHADOW_DISMISS.get(), ShadowDismissScreen::new);
+         MenuScreens.register(SololevelingModMenus.SHADOW_COMMAND.get(), ShadowCommandScreen::new);
+         MenuScreens.register(SololevelingModMenus.READER_GUI.get(), ReaderGUIScreen::new);
+         MenuScreens.register(SololevelingModMenus.HUNTER_ID_GUI.get(), HunterIDGuiScreen::new);
+         MenuScreens.register(SololevelingModMenus.MISC_ITEMS.get(), MiscItemsScreen::new);
+         MenuScreens.register(SololevelingModMenus.SELECTION_BOX_GUI.get(), SelectionBoxGUIScreen::new);
+         MenuScreens.register(SololevelingModMenus.PANEL_REWORK.get(), PanelReworkScreen::new);
+         MenuScreens.register(SololevelingModMenus.PANEL_REWORK_2.get(), PanelRework2Screen::new);
+         MenuScreens.register(SololevelingModMenus.EQUIPPED_ABILITIES.get(), EquippedAbilitiesScreen::new);
+         MenuScreens.register(SololevelingModMenus.UNLOCKED_SKILLS_TAB_1.get(), UnlockedSkillsTab1Screen::new);
+         MenuScreens.register(SololevelingModMenus.UNLOCKED_SKILLS_TAB_2.get(), UnlockedSkillsTab2Screen::new);
+         MenuScreens.register(SololevelingModMenus.UNLOCKED_SKILLS_TAB_3.get(), UnlockedSkillsTab3Screen::new);
+         MenuScreens.register(SololevelingModMenus.UNLOCKED_SKILLS_TAB_4.get(), UnlockedSkillsTab4Screen::new);
+         MenuScreens.register(SololevelingModMenus.UNLOCKED_SKILLS_TAB_5.get(), UnlockedSkillsTab5Screen::new);
+         MenuScreens.register(SololevelingModMenus.UNLOCKED_SKILLS_TAB_6.get(), UnlockedSkillsTab6Screen::new);
+         MenuScreens.register(SololevelingModMenus.SHADOW_EXCHANGE_SET.get(), ShadowExchangeSETScreen::new);
+         MenuScreens.register(SololevelingModMenus.SHADOW_EXCHANGE_SAVE.get(), ShadowExchangeSaveScreen::new);
+         MenuScreens.register(SololevelingModMenus.SHADOW_EXCHANGE_MAIN_GUI.get(), ShadowExchangeMainGUIScreen::new);
+         MenuScreens.register(SololevelingModMenus.STORE_POTION_NEW.get(), StorePotionNewScreen::new);
+         MenuScreens.register(SololevelingModMenus.UNLOCKED_SKILLS_TAB_7.get(), UnlockedSkillsTab7Screen::new);
+         MenuScreens.register(SololevelingModMenus.PATH.get(), PathScreen::new);
+         MenuScreens.register(SololevelingModMenus.QUESTS.get(), QuestsScreen::new);
+         MenuScreens.register(SololevelingModMenus.GUILD_COMPUTER.get(), GuildComputerScreen::new);
+      });
+   }
+}

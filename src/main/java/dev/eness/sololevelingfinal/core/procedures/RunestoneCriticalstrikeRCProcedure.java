@@ -1,0 +1,35 @@
+package dev.eness.sololevelingfinal.core.procedures;
+
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import dev.eness.sololevelingfinal.core.network.SololevelingModVariables;
+
+public class RunestoneCriticalstrikeRCProcedure {
+   public static void execute(Entity entity, ItemStack itemstack) {
+      if (entity != null) {
+         if (!entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).orElse(new SololevelingModVariables.PlayerVariables())
+               .Plist
+               .contains("Cross Strike")
+            && !entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).orElse(new SololevelingModVariables.PlayerVariables())
+               .Plist
+               .contains("Critical Strike")) {
+            String _setval = entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null)
+                     .orElse(new SololevelingModVariables.PlayerVariables())
+                  .Plist
+               + "Cross Strike,";
+            entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).ifPresent(capability -> {
+               capability.Plist = _setval;
+               capability.syncPlayerVariables(entity);
+            });
+            if (entity instanceof Player _player) {
+               ItemStack _stktoremove = itemstack;
+               _player.getInventory().clearOrCountMatchingItems(p -> _stktoremove.getItem() == p.getItem(), 1, _player.inventoryMenu.getCraftSlots());
+            }
+         } else if (entity instanceof Player _player && !_player.level().isClientSide()) {
+            _player.displayClientMessage(Component.literal("You already have this skill!"), false);
+         }
+      }
+   }
+}

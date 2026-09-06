@@ -156,8 +156,8 @@ dependencies {
     // then special handling is done to allow a setup of a vanilla dependency without the use of an external repository.
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 
-    // Compile and run against the user's private SLR build without modifying it.
-    implementation fg.deobf('private:SLR:1.2.0')
+    // The complete gameplay core is included in this repository under
+    // src/main/java/dev/eness/sololevelingfinal/core; no separate base-mod JAR is required.
     implementation fg.deobf("software.bernie.geckolib:geckolib-forge-${minecraft_version}:${geckolib_version}")
     monolithicGecko("software.bernie.geckolib:geckolib-forge-${minecraft_version}:${geckolib_version}") {
         transitive = false
@@ -330,7 +330,7 @@ tasks.register('verifyModResources') {
 
         Map mixinConfig = (Map) parser.parse(new File(root, 'mixins.sololeveling3.json'), 'UTF-8')
         (((List) mixinConfig.mixins) + ((List) mixinConfig.client)).each { mixinName ->
-            File mixinSource = file("src/main/java/dev/eness/sololeveling3/mixin/${mixinName}.java")
+            File mixinSource = file("src/main/java/dev/eness/sololevelingfinal/core/mixin/${mixinName}.java")
             if (!mixinSource.isFile()) {
                 throw new GradleException("Mixin config references missing source: ${mixinName}")
             }
@@ -359,8 +359,6 @@ tasks.named('check').configure {
     dependsOn tasks.named('verifyModResources')
 }
 
-def privateSlrJar = file('libs/SLR-1.2.0.jar')
-
 tasks.register('monolithicJar', Jar) {
     group = 'build'
     description = 'Builds the single visible-mod Solo Leveling Final distribution.'
@@ -370,26 +368,6 @@ tasks.register('monolithicJar', Jar) {
     archiveVersion.set(mod_version)
     archiveClassifier.set('all-in-one')
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-
-    from({ zipTree(privateSlrJar) }) {
-        exclude 'META-INF/MANIFEST.MF'
-        exclude 'META-INF/mods.toml'
-        exclude 'META-INF/accesstransformer.cfg'
-        exclude 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA'
-        exclude 'data/minecraft/tags/entity_types/soloboss.json'
-
-        // Repair three harmless-but-noisy resource defects in the SLR 1.2.0
-        // base while it is folded into the private distribution.
-        exclude "assets/sololeveling/models/custom/kasaka's_venom_fangs.json"
-        filesMatching('assets/sololeveling/animations/kaiselin.animation.json') {
-            filter { String line -> line.replace('"+math.cos', '"math.cos') }
-        }
-        filesMatching('assets/sololeveling/models/item/emerald_dagger.json') {
-            filter { String line ->
-                line.replace('"missing": "sololeveling:block/"', '"missing": "sololeveling:block/bladetext"')
-            }
-        }
-    }
 
     // GeckoLib is embedded as an implementation library, not as a second mod
     // container. Its initializer is called by SoloLeveling3.bootstrap().
@@ -408,7 +386,7 @@ tasks.register('monolithicJar', Jar) {
         exclude 'META-INF/mods.toml'
         exclude 'META-INF/accesstransformer.cfg'
         exclude 'pack.mcmeta'
-        exclude 'dev/eness/sololeveling3/SoloLeveling3Standalone.class'
+        exclude 'dev/eness/sololevelingfinal/core/SoloLeveling3Standalone.class'
     }
 
     from('src/monolithic/resources') {
@@ -458,22 +436,22 @@ tasks.register('verifyMonolithicJar') {
                     'mixins.sololeveling3.json',
                     'geckolib.mixins.json',
                     'geckolib.refmap.json',
-                    'net/solocraft/SololevelingMod.class',
+                    'dev/eness/sololevelingfinal/core/SololevelingMod.class',
                     'software/bernie/geckolib/GeckoLib.class',
-                    'dev/eness/sololeveling3/SoloLeveling3.class',
-                    'dev/eness/sololeveling3/campaign/CampaignDirector.class',
-                    'dev/eness/sololeveling3/campaign/LegiaCampaign.class',
-                    'dev/eness/sololeveling3/campaign/CampaignSurvival.class',
-                    'dev/eness/sololeveling3/campaign/CampaignRewards.class',
-                    'dev/eness/sololeveling3/campaign/TempleReturnEncounter.class',
-                    'dev/eness/sololeveling3/campaign/CampaignArenas.class',
+                    'dev/eness/sololevelingfinal/core/SoloLeveling3.class',
+                    'dev/eness/sololevelingfinal/core/campaign/CampaignDirector.class',
+                    'dev/eness/sololevelingfinal/core/campaign/LegiaCampaign.class',
+                    'dev/eness/sololevelingfinal/core/campaign/CampaignSurvival.class',
+                    'dev/eness/sololevelingfinal/core/campaign/CampaignRewards.class',
+                    'dev/eness/sololevelingfinal/core/campaign/TempleReturnEncounter.class',
+                    'dev/eness/sololevelingfinal/core/campaign/CampaignArenas.class',
                     'data/sololeveling3/dimension/campaign_arena.json',
                     'data/sololeveling3/dimension_type/campaign_arena.json',
                     'data/sololeveling3/schematics/three_monarchs_master_v1.schem',
                     'data/sololeveling3/schematics/antares_final_master_v1.schem',
-                    'dev/eness/sololeveling3/mixin/SololevelingModBootstrapMixin.class',
-                    'dev/eness/sololeveling3/entity/TarnakEntity.class',
-                    'dev/eness/sololeveling3/client/renderer/TarnakRenderer.class',
+                    'dev/eness/sololevelingfinal/core/mixin/SololevelingModBootstrapMixin.class',
+                    'dev/eness/sololevelingfinal/core/entity/TarnakEntity.class',
+                    'dev/eness/sololevelingfinal/core/client/renderer/TarnakRenderer.class',
                     'data/sololeveling3/slr/dungeons/legia_prison.json',
                     'data/solo_leveling/structures/monarch_of_giants_room.nbt',
                     'data/minecraft/tags/entity_types/soloboss.json',
@@ -488,7 +466,7 @@ tasks.register('verifyMonolithicJar') {
                 }
             }
 
-            if (zip.getEntry('dev/eness/sololeveling3/SoloLeveling3Standalone.class') != null
+            if (zip.getEntry('dev/eness/sololevelingfinal/core/SoloLeveling3Standalone.class') != null
                     || zip.getEntry('software/bernie/example/GeckoLibMod.class') != null) {
                 throw new GradleException('A secondary @Mod entry point leaked into the monolithic distribution.')
             }

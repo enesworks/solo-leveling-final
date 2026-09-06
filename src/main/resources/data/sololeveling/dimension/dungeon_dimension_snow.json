@@ -1,0 +1,34 @@
+{
+  "type": "sololeveling:dungeon_dimension_snow",
+  "generator": {
+    "type": "minecraft:flat",
+    "settings": {
+      "biome": "sololeveling:dungeon_biome_snow",
+      "lakes": false,
+      "features": false,
+      "layers": [
+        {
+          "height": 64,
+          "block": "minecraft:air"
+        },
+        {
+          "height": 1,
+          "block": "minecraft:bedrock"
+        },
+        {
+          "height": 23,
+          "block": "minecraft:deepslate"
+        },
+        {
+          "height": 7,
+          "block": "minecraft:stone"
+        },
+        {
+          "height": 1,
+          "block": "minecraft:deepslate"
+        }
+      ],
+      "structure_overrides": []
+    }
+  }
+}

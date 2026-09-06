@@ -83,12 +83,12 @@ tasks.named('verifyMonolithicJar').configure {
     doLast {
         def bundle = tasks.named('monolithicJar').get().archiveFile.get().asFile
         new java.util.zip.ZipFile(bundle).withCloseable { zip ->
-            ['dev/eness/sololeveling3/entity/RakanEntity.class',
-             'dev/eness/sololeveling3/entity/RakanVfx.class',
-             'dev/eness/sololeveling3/client/model/RakanModel.class',
-             'dev/eness/sololeveling3/client/renderer/RakanRenderer.class',
-             'dev/eness/sololeveling3/client/particle/RakanCombatParticle.class',
-             'dev/eness/sololeveling3/vfx/RakanVfxMesh.class',
+            ['dev/eness/sololevelingfinal/core/entity/RakanEntity.class',
+             'dev/eness/sololevelingfinal/core/entity/RakanVfx.class',
+             'dev/eness/sololevelingfinal/core/client/model/RakanModel.class',
+             'dev/eness/sololevelingfinal/core/client/renderer/RakanRenderer.class',
+             'dev/eness/sololevelingfinal/core/client/particle/RakanCombatParticle.class',
+             'dev/eness/sololevelingfinal/core/vfx/RakanVfxMesh.class',
              'assets/sololeveling3/particles/rakan_claw_right.json',
              'assets/sololeveling3/particles/rakan_claw_left.json',
              'assets/sololeveling3/particles/rakan_block.json',

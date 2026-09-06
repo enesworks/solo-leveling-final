@@ -1,0 +1,30 @@
+package dev.eness.sololevelingfinal.core;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.RenderGuiOverlayEvent.Pre;
+import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber.Bus;
+import dev.eness.sololevelingfinal.core.network.SololevelingModVariables;
+
+@EventBusSubscriber(modid = "sololeveling", bus = Bus.FORGE, value = Dist.CLIENT)
+public class DisableCrosshair {
+   @SubscribeEvent
+   public static void RenderHealthBar(Pre event) {
+      Entity entity = Minecraft.getInstance().player;
+      if (entity != null) {
+         if ((
+               entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).orElse(new SololevelingModVariables.PlayerVariables()).overlay_alpha_dailyquestwarning
+                     > 0.0
+                  || entity.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).orElse(new SololevelingModVariables.PlayerVariables()).overlay_alpha_welcome
+                     > 0.0
+            )
+            && VanillaGuiOverlay.CROSSHAIR.type() == event.getOverlay()) {
+            event.setCanceled(true);
+         }
+      }
+   }
+}

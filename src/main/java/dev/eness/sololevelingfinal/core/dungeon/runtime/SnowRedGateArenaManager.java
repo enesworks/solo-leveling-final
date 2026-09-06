@@ -1,0 +1,1779 @@
+package dev.eness.sololevelingfinal.core.dungeon.runtime;
+
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.Map.Entry;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.Direction.Plane;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap.Types;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.event.TickEvent.Phase;
+import net.minecraftforge.event.TickEvent.ServerTickEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent.Clone;
+import net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod.EventBusSubscriber;
+import dev.eness.sololevelingfinal.core.SololevelingMod;
+import dev.eness.sololevelingfinal.core.dungeon.data.DungeonDataManager;
+import dev.eness.sololevelingfinal.core.entity.Portal1Entity;
+import dev.eness.sololevelingfinal.core.entity.RedGateEntity;
+import dev.eness.sololevelingfinal.core.init.SololevelingModEntities;
+import dev.eness.sololevelingfinal.core.network.SololevelingModVariables;
+import dev.eness.sololevelingfinal.core.util.ShadowMonarchManager;
+import dev.eness.sololevelingfinal.core.util.UrgentQuestManager;
+import dev.eness.sololevelingfinal.core.world.dimension.rift.RiftTerritory;
+
+@EventBusSubscriber
+public final class SnowRedGateArenaManager {
+   public static final ResourceLocation ARENA_ID = new ResourceLocation("sololeveling", "red_gate_monarch_arena");
+   private static final ResourceLocation LEGACY_ARENA_ID = new ResourceLocation("sololeveling", "red_gate_snow_arena");
+   public static final ResourceKey<Level> SNOW_DIMENSION = ResourceKey.create(
+      Registries.DIMENSION, new ResourceLocation("sololeveling", "dungeon_dimension_snow")
+   );
+   public static final String TERRITORY_TAG = "slr_red_gate_territory";
+   private static final Map<RiftTerritory, ResourceKey<Level>> LEGACY_TERRITORY_DIMENSIONS = createLegacyTerritoryDimensions();
+   private static final ResourceLocation BEAR_POOL = new ResourceLocation("sololeveling", "red_gate_ice_bears");
+   private static final ResourceLocation ELF_POOL = new ResourceLocation("sololeveling", "red_gate_ice_elves");
+   private static final ResourceLocation BARUKA_POOL = new ResourceLocation("sololeveling", "red_gate_baruka");
+   private static final List<ResourceLocation> REQUIRED_POOLS = List.of(BEAR_POOL, ELF_POOL, BARUKA_POOL);
+   private static final String SEQUENCE_KEY = "red_gate_monarch";
+   private static final String GATE_INSTANCE_TAG = "slr_red_gate_wave_instance";
+   private static final String PROCEDURAL_DUNGEON_TAG = "slr_procedural_dungeon";
+   private static final String PROCEDURAL_RED_TAG = "slr_procedural_red_gate";
+   private static final String BOUNDARY_NOTICE_TAG = "slr_red_gate_boundary_notice";
+   private static final String REVEAL_READY_TIME_TAG = "slr_red_gate_reveal_ready_time";
+   private static final int FIRST_WAVE_DELAY = 100;
+   private static final int INTERMISSION_TICKS = 160;
+   private static final int BOSS_INTRO_TICKS = 200;
+   private static final int ARENA_RADIUS = 80;
+   private static final int MOB_LEASH_RADIUS = 76;
+   private static final int MAX_ACTIVE_WAVE_MOBS = 18;
+   private static final int LANDSCAPE_RADIUS = 112;
+   private static final int LANDSCAPE_MIN_OFFSET = -4;
+   private static final int LANDSCAPE_MAX_OFFSET = 16;
+   private static final int LANDSCAPE_CLEAR_HEIGHT = 26;
+   private static final int SAFE_CLEARING_RADIUS = 11;
+   private static final int SCENERY_COUNT = 42;
+   private static final int SHARD_COUNT = 18;
+   private static final int MIN_GATE_REVEAL_TICKS = 10;
+   private static final int PREPARATION_WORK_BUDGET = 256;
+   private static final int MINIMUM_CELL_SEPARATION = 224;
+   private static final Map<UUID, SnowRedGateArenaManager.ArenaPreparationJob> PREPARATIONS = new LinkedHashMap<>();
+   private static int tickCounter;
+
+   private SnowRedGateArenaManager() {
+   }
+
+   private static Map<RiftTerritory, ResourceKey<Level>> createLegacyTerritoryDimensions() {
+      Map<RiftTerritory, ResourceKey<Level>> dimensions = new EnumMap<>(RiftTerritory.class);
+
+      for (RiftTerritory territory : RiftTerritory.values()) {
+         dimensions.put(territory, ResourceKey.create(Registries.DIMENSION, new ResourceLocation("sololeveling", "monarch_territory_" + territory.id())));
+      }
+
+      return Map.copyOf(dimensions);
+   }
+
+   private static Optional<RiftTerritory> storedTerritory(Entity gate) {
+      return gate == null ? Optional.empty() : Optional.ofNullable(RiftTerritory.fromName(gate.getPersistentData().getString("slr_red_gate_territory")));
+   }
+
+   private static RiftTerritory territoryFor(Entity gate) {
+      return storedTerritory(gate).orElse(RiftTerritory.FROST);
+   }
+
+   private static Optional<RiftTerritory> legacyTerritoryForDimension(ResourceKey<Level> dimension) {
+      return LEGACY_TERRITORY_DIMENSIONS.entrySet().stream().filter(entry -> entry.getValue().equals(dimension)).map(Entry::getKey).findFirst();
+   }
+
+   private static Optional<RiftTerritory> territoryForInstance(DungeonInstanceSavedData.Instance instance) {
+      if (instance == null) {
+         return Optional.empty();
+      }
+
+      Optional<RiftTerritory> legacy = legacyTerritoryForDimension(instance.dimension());
+      if (legacy.isPresent()) {
+         return legacy;
+      }
+
+      if (!SNOW_DIMENSION.equals(instance.dimension())) {
+         return Optional.empty();
+      }
+
+      Optional<RiftTerritory> encoded = instance.playerStart().flatMap(RedGateRealmLayout::cellAt).map(RedGateRealmLayout.Cell::territory);
+      return encoded.isPresent() ? encoded : Optional.of(RiftTerritory.FROST);
+   }
+
+   private static boolean isArenaDimension(ResourceKey<Level> dimension) {
+      return SNOW_DIMENSION.equals(dimension) || legacyTerritoryForDimension(dimension).isPresent();
+   }
+
+   public static boolean isArenaInstance(DungeonInstanceSavedData.Instance instance) {
+      return instance != null
+         && (ARENA_ID.equals(instance.dungeonId()) || LEGACY_ARENA_ID.equals(instance.dungeonId()))
+         && isArenaDimension(instance.dimension());
+   }
+
+   public static boolean isArenaMob(Entity entity) {
+      if (entity != null && !entity.level().isClientSide() && entity.level() instanceof ServerLevel level) {
+         String var5 = entity.getPersistentData().getString("slr_dungeon_instance");
+
+         try {
+            return !var5.isBlank()
+               && DungeonInstanceSavedData.get(level).getInstance(UUID.fromString(var5)).filter(SnowRedGateArenaManager::isArenaInstance).isPresent();
+         } catch (IllegalArgumentException ignored) {
+            return false;
+         }
+      } else {
+         return false;
+      }
+   }
+
+   public static Optional<RiftTerritory> arenaTerritory(Entity entity) {
+      if (entity != null && !entity.level().isClientSide() && entity.level() instanceof ServerLevel level) {
+         String var5 = entity.getPersistentData().getString("slr_dungeon_instance");
+
+         try {
+            return var5.isBlank()
+               ? Optional.empty()
+               : DungeonInstanceSavedData.get(level)
+                  .getInstance(UUID.fromString(var5))
+                  .filter(SnowRedGateArenaManager::isArenaInstance)
+                  .flatMap(SnowRedGateArenaManager::territoryForInstance);
+         } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
+         }
+      } else {
+         return Optional.empty();
+      }
+   }
+
+   public static boolean hasActiveArena(MinecraftServer server) {
+      return server != null && DungeonInstanceSavedData.get(server).listInstances().stream().anyMatch(SnowRedGateArenaManager::isArenaInstance);
+   }
+
+   public static void onParticipantExited(MinecraftServer server, DungeonInstanceSavedData.Instance instance) {
+      if (server != null && isArenaInstance(instance) && instance.participants().isEmpty()) {
+         DungeonInstanceSavedData registry = DungeonInstanceSavedData.get(server);
+         if (instance.completed()) {
+            ServerLevel level = server.getLevel(instance.dimension());
+            if (level != null) {
+               discardReturnPortals(level, instance);
+            }
+
+            registry.pruneCompletedEmptyInstances();
+            recordArenaClosure(server, instance);
+         } else {
+            failAbandonedInstance(server, registry, instance);
+         }
+      }
+   }
+
+   public static boolean enterLegacy(LevelAccessor world, RedGateEntity gate, ServerPlayer initiator) {
+      if (world != null && gate != null && initiator != null) {
+         if (gate.getEntityData().get(RedGateEntity.DATA_usedbefore)) {
+            return true;
+         }
+
+         RiftTerritory territory = territoryFor(gate);
+         gate.getPersistentData().putString("slr_red_gate_territory", territory.id());
+         return open(world, gate, initiator, nearbyPartyMembers(world, gate, initiator), true, territory);
+      } else {
+         return false;
+      }
+   }
+
+   public static boolean enterProcedural(LevelAccessor world, Entity gate, ServerPlayer initiator, List<ServerPlayer> entrants) {
+      return open(world, gate, initiator, entrants, false, territoryFor(gate));
+   }
+
+   public static RiftTerritory assignTerritoryIfMissing(Entity gate) {
+      RiftTerritory existing = storedTerritory(gate).orElse(null);
+      if (existing != null) {
+         return existing;
+      }
+
+      RiftTerritory[] territories = RiftTerritory.values();
+      RiftTerritory selected = territories[Math.floorMod(gate.getUUID().hashCode(), territories.length)];
+      gate.getPersistentData().putString("slr_red_gate_territory", selected.id());
+      return selected;
+   }
+
+   public static ResourceKey<Level> dimensionFor(RiftTerritory territory) {
+      return SNOW_DIMENSION;
+   }
+
+   private static boolean open(
+      LevelAccessor world, Entity gate, ServerPlayer initiator, List<ServerPlayer> requestedEntrants, boolean markLegacyUsed, RiftTerritory territory
+   ) {
+      if (!(!world.isClientSide() && gate.level() instanceof ServerLevel sourceLevel)) {
+         return true;
+      }
+
+      if (isDungeonBound(initiator)) {
+         initiator.displayClientMessage(Component.literal("You are already bound to a dungeon.").withStyle(ChatFormatting.RED), true);
+         return true;
+      }
+
+      MinecraftServer server = sourceLevel.getServer();
+      DungeonInstanceSavedData registry = DungeonInstanceSavedData.get(server);
+      List<ServerPlayer> entrants = sanitizeEntrants(sourceLevel, gate, initiator, requestedEntrants);
+      if (entrants.isEmpty()) {
+         return true;
+      }
+
+      for (ResourceLocation pool : REQUIRED_POOLS) {
+         if (DungeonDataManager.mobPool(pool).isEmpty()) {
+            openingFailure(world, gate, initiator, "The red gate encounter is unavailable: missing mob pool " + pool);
+            return true;
+         }
+      }
+
+      ResourceKey<Level> destination = dimensionFor(territory);
+      ServerLevel arenaLevel = server.getLevel(destination);
+      if (arenaLevel == null) {
+         openingFailure(world, gate, initiator, "The " + territory.displayName() + " Monarch territory is unavailable.");
+         return true;
+      }
+
+      UUID instanceId = gate.getUUID();
+      registry.pruneCompletedEmptyInstances();
+      if (registry.getInstance(instanceId).isPresent()) {
+         initiator.sendSystemMessage(Component.literal("This red gate already has an active encounter.").withStyle(ChatFormatting.RED));
+         return true;
+      }
+
+      long seed = gate.getUUID().getMostSignificantBits() ^ gate.getUUID().getLeastSignificantBits() ^ arenaLevel.getSeed();
+      int effectiveLevel = effectiveLevelFor(territory, initiator, entrants);
+      BlockPos center = allocateArenaCenter(arenaLevel, registry, territory).orElse(null);
+      if (center == null) {
+         openingFailure(world, gate, initiator, "No isolated Red Gate arena cell is currently available.");
+         return true;
+      }
+
+      DungeonInstanceSavedData.MutationResult<DungeonInstanceSavedData.Instance> created = registry.create(
+         instanceId, ARENA_ID, destination, seed, effectiveLevel, arenaLevel.getGameTime()
+      );
+      if (created.success() && created.value() != null) {
+         DungeonInstanceSavedData.Instance instance = created.value();
+         instance.setReturnPortalDeferred(markLegacyUsed);
+
+         for (ServerPlayer entrant : entrants) {
+            if (!instance.addParticipant(entrant.getUUID())) {
+               registry.remove(instanceId);
+               openingFailure(world, gate, initiator, "The red gate party is too large for one encounter.");
+               return true;
+            }
+         }
+
+         if (!instance.setPlayerStart(center)) {
+            registry.remove(instanceId);
+            openingFailure(world, gate, initiator, "Could not reserve the red gate arena cell.");
+            return true;
+         }
+
+         for (ServerPlayer entrant : entrants) {
+            prepareEntrant(sourceLevel, gate, entrant, instance, territory);
+         }
+
+         gate.getPersistentData().putString("slr_red_gate_wave_instance", instanceId.toString());
+         gate.getPersistentData().putString("slr_red_gate_territory", territory.id());
+         gate.getPersistentData().putBoolean("slr_is_red_gate", true);
+         if (markLegacyUsed && gate instanceof RedGateEntity redGate) {
+            redGate.getEntityData().set(RedGateEntity.DATA_usedbefore, true);
+            redGate.setTexture("21");
+         }
+
+         SololevelingModVariables.MapVariables.get(world).RedGate = true;
+         SololevelingModVariables.MapVariables.get(world).syncData(world);
+         enqueuePreparation(instance, center, territory);
+         SololevelingMod.LOGGER
+            .info(
+               "Queued {} Monarch red-gate arena {} at {} for {} participant(s), effective level {}",
+               territory.id(),
+               instanceId,
+               center,
+               entrants.size(),
+               effectiveLevel
+            );
+         return true;
+      } else {
+         openingFailure(world, gate, initiator, "Could not create the red gate encounter: " + created.message());
+         return true;
+      }
+   }
+
+   private static void openingFailure(LevelAccessor world, Entity gate, ServerPlayer initiator, String message) {
+      initiator.sendSystemMessage(Component.literal(message).withStyle(ChatFormatting.RED));
+      if (gate instanceof Portal1Entity portal && gate.getPersistentData().getBoolean("slr_procedural_red_gate")) {
+         portal.getEntityData().set(Portal1Entity.DATA_usedbefore, false);
+         portal.setTexture("portalgate2");
+         gate.getPersistentData().putBoolean("slr_procedural_red_gate", false);
+         gate.getPersistentData().putBoolean("slr_is_red_gate", false);
+         SololevelingModVariables.MapVariables.get(world).RedGate = world.getServer() != null && hasActiveArena(world.getServer());
+         SololevelingModVariables.MapVariables.get(world).syncData(world);
+      }
+   }
+
+   private static int effectiveLevelFor(RiftTerritory territory, ServerPlayer initiator, List<ServerPlayer> entrants) {
+      return territory == RiftTerritory.FROST
+         ? DungeonLevelHelper.resolveEffectiveLevel(DungeonLevelHelper.EffectiveLevelSource.PARTY_AVERAGE, initiator, entrants, 0, 0, 10)
+         : DungeonLevelHelper.resolveEffectiveLevel(DungeonLevelHelper.EffectiveLevelSource.PARTY_AVERAGE, initiator, entrants, 35, 1, 1000);
+   }
+
+   private static String configureInstance(
+      ServerLevel level, DungeonInstanceSavedData.Instance instance, BlockPos center, int partySize, long seed, RiftTerritory territory
+   ) {
+      instance.setPlayerStart(center);
+      instance.setExit(center.offset(4, 0, 0));
+      instance.setExitFacing(Direction.SOUTH);
+      List<SnowRedGateArenaManager.WaveSpec> waves = new ArrayList<>();
+      if (territory == RiftTerritory.FROST) {
+         waves.add(new SnowRedGateArenaManager.WaveSpec("ice_bear_rush", BEAR_POOL, scaledCount(3, partySize), false, false, 100));
+      }
+
+      waves.add(
+         new SnowRedGateArenaManager.WaveSpec(
+            "ice_elf_vanguard", ELF_POOL, scaledCount(4, partySize), false, false, territory == RiftTerritory.FROST ? 160 : 100
+         )
+      );
+      waves.add(new SnowRedGateArenaManager.WaveSpec("ice_elf_ambush", ELF_POOL, scaledCount(6, partySize), false, false, 160));
+      waves.add(new SnowRedGateArenaManager.WaveSpec("ice_elf_encirclement", ELF_POOL, scaledCount(8, partySize), false, false, 160));
+      waves.add(new SnowRedGateArenaManager.WaveSpec("ice_elf_guard", ELF_POOL, scaledCount(6, partySize), false, true, 160));
+      waves.add(new SnowRedGateArenaManager.WaveSpec("baruka", BARUKA_POOL, 1, true, false, 200));
+
+      for (int order = 0; order < waves.size(); order++) {
+         SnowRedGateArenaManager.WaveSpec wave = waves.get(order);
+         DungeonInstanceSavedData.MutationResult<DungeonInstanceSavedData.EncounterState> created = instance.createEncounter(
+            wave.id(), wave.pool(), wave.boss(), false, instance.effectiveLevel(), instance.effectiveLevel(), "red_gate_monarch", order, wave.delayTicks()
+         );
+         if (!created.success() || created.value() == null) {
+            return created.message();
+         }
+
+         DungeonInstanceSavedData.EncounterState encounter = created.value();
+         if (order == 0 && !encounter.setTriggerBounds(new DungeonInstanceSavedData.Bounds(center.offset(-8, -4, -8), center.offset(8, 8, 8)))) {
+            return "could not persist the arena entry trigger";
+         }
+
+         List<BlockPos> positions = wavePositions(level, center, wave.count(), seed, order, wave.boss());
+         if (positions.size() != wave.count()) {
+            return "could only find " + positions.size() + " of " + wave.count() + " safe spawn positions for " + wave.id();
+         }
+
+         String role = wave.boss() ? "boss" : (wave.elite() ? "elite" : "normal");
+
+         for (int marker = 0; marker < positions.size(); marker++) {
+            if (!encounter.addMarker(wave.id() + "_" + marker, role, positions.get(marker))) {
+               return "could not persist spawn marker " + marker + " for " + wave.id();
+            }
+         }
+      }
+
+      return null;
+   }
+
+   private static int scaledCount(int base, int partySize) {
+      int extraPlayers = Math.max(0, partySize - 1);
+      int perExtraPlayer = Math.max(1, (base + 1) / 2);
+      return Math.min(18, base + extraPlayers * perExtraPlayer);
+   }
+
+   private static List<BlockPos> wavePositions(ServerLevel level, BlockPos center, int count, long seed, int wave, boolean boss) {
+      RandomSource random = RandomSource.create(seed ^ -7046029254386353131L * (wave + 1L));
+      List<BlockPos> positions = new ArrayList<>();
+      if (boss) {
+         BlockPos position = findUniqueSafeSurface(level, center.getX() + 14, center.getZ(), center, positions);
+         if (position != null) {
+            positions.add(position);
+         }
+
+         return positions;
+      } else {
+         double offset = random.nextDouble() * Math.PI * 2.0;
+
+         for (int index = 0; index < count; index++) {
+            double angle = offset + (Math.PI * 2) * index / Math.max(1, count);
+            int radius = 12 + random.nextInt(7);
+            int x = center.getX() + Mth.floor(Math.cos(angle) * radius);
+            int z = center.getZ() + Mth.floor(Math.sin(angle) * radius);
+            BlockPos position = findUniqueSafeSurface(level, x, z, center, positions);
+            if (position != null) {
+               positions.add(position);
+            }
+         }
+
+         return positions;
+      }
+   }
+
+   private static BlockPos findUniqueSafeSurface(ServerLevel level, int requestedX, int requestedZ, BlockPos fallbackCenter, List<BlockPos> occupied) {
+      for (int attempt = 0; attempt < 32; attempt++) {
+         double angle = attempt * 2.399963229728653;
+         int radius = attempt / 4;
+         BlockPos candidate = findSafeSurface(
+            level, requestedX + Mth.floor(Math.cos(angle) * radius), requestedZ + Mth.floor(Math.sin(angle) * radius), fallbackCenter
+         );
+         if (candidate != null && !occupied.contains(candidate)) {
+            return candidate;
+         }
+      }
+
+      return null;
+   }
+
+   private static BlockPos findSafeSurface(ServerLevel level, int requestedX, int requestedZ, BlockPos fallbackCenter) {
+      for (int attempt = 0; attempt < 16; attempt++) {
+         int ring = attempt / 4;
+
+         int x = requestedX + switch (attempt & 3) {
+            case 1 -> ring;
+            case 2 -> -ring;
+            default -> 0;
+         };
+
+         int z = requestedZ + switch (attempt & 3) {
+            case 0 -> ring;
+            case 3 -> -ring;
+            default -> 0;
+         };
+         int y = level.getHeight(Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+         BlockPos position = new BlockPos(x, y, z);
+         if (safeStandingPosition(level, position)) {
+            return position;
+         }
+
+         for (int scanY = level.getMaxBuildHeight() - 3; scanY > level.getMinBuildHeight() + 1; scanY--) {
+            BlockPos scanned = new BlockPos(x, scanY, z);
+            if (safeStandingPosition(level, scanned)) {
+               return scanned;
+            }
+         }
+      }
+
+      return fallbackCenter != null && safeStandingPosition(level, fallbackCenter) ? fallbackCenter : null;
+   }
+
+   private static boolean safeStandingPosition(ServerLevel level, BlockPos position) {
+      if (position.getY() > level.getMinBuildHeight() + 1 && position.getY() < level.getMaxBuildHeight() - 3) {
+         BlockState floor = level.getBlockState(position.below());
+         return floor.isFaceSturdy(level, position.below(), Direction.UP)
+            && !floor.is(Blocks.BEDROCK)
+            && !isUnsafeLandingBlock(floor)
+            && level.getFluidState(position).isEmpty()
+            && level.getFluidState(position.above()).isEmpty()
+            && level.getBlockState(position).getCollisionShape(level, position).isEmpty()
+            && level.getBlockState(position.above()).getCollisionShape(level, position.above()).isEmpty()
+            && level.getBlockState(position.above(2)).getCollisionShape(level, position.above(2)).isEmpty()
+            && !isUnsafeLandingBlock(level.getBlockState(position))
+            && !isUnsafeLandingBlock(level.getBlockState(position.above()));
+      } else {
+         return false;
+      }
+   }
+
+   private static Optional<BlockPos> allocateArenaCenter(ServerLevel level, DungeonInstanceSavedData registry, RiftTerritory territory) {
+      Set<Integer> occupiedSlots = new HashSet<>();
+      List<BlockPos> occupiedCenters = new ArrayList<>();
+
+      for (DungeonInstanceSavedData.Instance existing : registry.listInstances()) {
+         if (SNOW_DIMENSION.equals(existing.dimension())) {
+            BlockPos existingCenter = existing.playerStart().orElse(null);
+            if (existingCenter != null) {
+               occupiedCenters.add(existingCenter);
+               RedGateRealmLayout.cellAt(existingCenter).filter(cell -> cell.territory() == territory).ifPresent(cell -> occupiedSlots.add(cell.slot()));
+            }
+         }
+      }
+
+      long minimumDistanceSquared = 50176L;
+
+      for (int slot = 0; slot < 256; slot++) {
+         if (!occupiedSlots.contains(slot)) {
+            BlockPos horizontal = RedGateRealmLayout.center(territory, slot, 0);
+            boolean overlaps = occupiedCenters.stream().anyMatch(existingx -> {
+               long dx = (long)existingx.getX() - horizontal.getX();
+               long dz = (long)existingx.getZ() - horizontal.getZ();
+               return dx * dx + dz * dz < minimumDistanceSquared;
+            });
+            if (!overlaps) {
+               int standingY = level.getHeight(Types.MOTION_BLOCKING_NO_LEAVES, horizontal.getX(), horizontal.getZ());
+               if (standingY <= level.getMinBuildHeight() + 1) {
+                  standingY = Mth.clamp(64, level.getMinBuildHeight() + 8, level.getMaxBuildHeight() - 16);
+               }
+
+               return Optional.of(new BlockPos(horizontal.getX(), standingY, horizontal.getZ()));
+            }
+         }
+      }
+
+      return Optional.empty();
+   }
+
+   private static BlockPos surface(ServerLevel level, int x, int z) {
+      return new BlockPos(x, level.getHeight(Types.MOTION_BLOCKING_NO_LEAVES, x, z), z);
+   }
+
+   private static void prepareLanding(ServerLevel level, BlockPos center, RiftTerritory territory) {
+      Block support = paletteFor(territory).groundPrimary();
+
+      for (int dx = -2; dx <= 2; dx++) {
+         for (int dz = -2; dz <= 2; dz++) {
+            BlockPos standing = center.offset(dx, 0, dz);
+            BlockPos floor = standing.below();
+            BlockState floorState = level.getBlockState(floor);
+            if (!floorState.isFaceSturdy(level, floor, Direction.UP) || isUnsafeLandingBlock(floorState) || !level.getFluidState(floor).isEmpty()) {
+               setBlockIfChanged(level, floor, support.defaultBlockState());
+            }
+
+            for (int y = 0; y <= 3; y++) {
+               BlockPos clear = standing.above(y);
+               BlockState clearState = level.getBlockState(clear);
+               if (!clearState.getCollisionShape(level, clear).isEmpty() || !level.getFluidState(clear).isEmpty() || isUnsafeLandingBlock(clearState)) {
+                  setBlockIfChanged(level, clear, Blocks.AIR.defaultBlockState());
+               }
+            }
+         }
+      }
+   }
+
+   private static boolean setBlockIfChanged(ServerLevel level, BlockPos position, BlockState state) {
+      return !state.equals(level.getBlockState(position)) && level.setBlock(position, state, 2);
+   }
+
+   private static boolean isUnsafeLandingBlock(BlockState state) {
+      return state.is(Blocks.LAVA)
+         || state.is(Blocks.FIRE)
+         || state.is(Blocks.SOUL_FIRE)
+         || state.is(Blocks.MAGMA_BLOCK)
+         || state.is(Blocks.CACTUS)
+         || state.is(Blocks.SWEET_BERRY_BUSH)
+         || state.is(Blocks.POWDER_SNOW)
+         || state.is(Blocks.CAMPFIRE)
+         || state.is(Blocks.SOUL_CAMPFIRE);
+   }
+
+   private static boolean isPreparingInstance(DungeonInstanceSavedData.Instance instance) {
+      return isArenaInstance(instance) && !instance.completed() && instance.playerStart().isPresent() && instance.encounters().isEmpty();
+   }
+
+   private static void enqueuePreparation(DungeonInstanceSavedData.Instance instance, BlockPos center, RiftTerritory territory) {
+      PREPARATIONS.compute(
+         instance.id(),
+         (ignored, existing) -> (SnowRedGateArenaManager.ArenaPreparationJob)(existing != null && existing.matches(center, territory, instance.seed())
+            ? existing
+            : new SnowRedGateArenaManager.ArenaPreparationJob(instance.id(), center, territory, instance.seed()))
+      );
+   }
+
+   private static void ensurePreparationQueued(DungeonInstanceSavedData.Instance instance) {
+      if (isPreparingInstance(instance)) {
+         BlockPos center = instance.playerStart().orElse(null);
+         RiftTerritory territory = territoryForInstance(instance).orElse(null);
+         if (center != null && territory != null) {
+            enqueuePreparation(instance, center, territory);
+         }
+      }
+   }
+
+   private static List<ServerPlayer> onlineBoundParticipants(MinecraftServer server, DungeonInstanceSavedData.Instance instance) {
+      String instanceId = instance.id().toString();
+      Set<UUID> participants = instance.participants();
+      return server.getPlayerList()
+         .getPlayers()
+         .stream()
+         .filter(player -> participants.contains(player.getUUID()))
+         .filter(player -> instanceId.equals(player.getPersistentData().getString("slr_dungeon_instance")))
+         .toList();
+   }
+
+   private static void processPreparationJobs(MinecraftServer server) {
+      if (!PREPARATIONS.isEmpty()) {
+         DungeonInstanceSavedData registry = DungeonInstanceSavedData.get(server);
+         List<SnowRedGateArenaManager.ArenaPreparationJob> runnable = new ArrayList<>();
+
+         for (SnowRedGateArenaManager.ArenaPreparationJob job : new ArrayList<>(PREPARATIONS.values())) {
+            DungeonInstanceSavedData.Instance instance = registry.getInstance(job.instanceId()).orElse(null);
+            if (instance != null && isPreparingInstance(instance)) {
+               if (!job.matches(instance.playerStart().orElse(null), territoryForInstance(instance).orElse(null), instance.seed())) {
+                  failPreparation(server, registry, instance, "the persisted arena allocation changed while it was preparing", null);
+               } else if (instance.participants().isEmpty()) {
+                  failAbandonedInstance(server, registry, instance);
+               } else if (server.getLevel(instance.dimension()) == null) {
+                  failPreparation(server, registry, instance, "the shared Red Gate realm is unavailable", null);
+               } else if (!onlineBoundParticipants(server, instance).isEmpty()) {
+                  runnable.add(job);
+               }
+            } else {
+               PREPARATIONS.remove(job.instanceId());
+            }
+         }
+
+         if (!runnable.isEmpty()) {
+            int remaining = 256;
+
+            for (int index = 0; index < runnable.size() && remaining > 0; index++) {
+               SnowRedGateArenaManager.ArenaPreparationJob job = runnable.get(index);
+               int jobsLeft = runnable.size() - index;
+               int allowance = Math.max(1, remaining / jobsLeft);
+               int used = advancePreparation(server, registry, job, allowance);
+               remaining -= Math.min(remaining, used);
+            }
+         }
+      }
+   }
+
+   private static int advancePreparation(
+      MinecraftServer server, DungeonInstanceSavedData registry, SnowRedGateArenaManager.ArenaPreparationJob job, int allowance
+   ) {
+      DungeonInstanceSavedData.Instance instance = registry.getInstance(job.instanceId()).filter(SnowRedGateArenaManager::isPreparingInstance).orElse(null);
+      if (instance == null) {
+         PREPARATIONS.remove(job.instanceId());
+         return 0;
+      }
+
+      ServerLevel level = server.getLevel(instance.dimension());
+      if (level == null) {
+         failPreparation(server, registry, instance, "the shared Red Gate realm became unavailable", null);
+         return 0;
+      }
+
+      try {
+         int used = job.advance(level, allowance);
+         long revealTicks = Math.max(0L, level.getGameTime() - instance.createdGameTime());
+         boolean entrantsSawRedGate = onlineBoundParticipants(server, instance).stream().allMatch(player -> revealDelayRemaining(server, player) == 0);
+         if (job.finished() && revealTicks >= 10L && entrantsSawRedGate) {
+            finishPreparation(server, registry, level, instance, job);
+         }
+
+         return used;
+      } catch (RuntimeException exception) {
+         failPreparation(server, registry, instance, "an unexpected world-generation error occurred", exception);
+         return 0;
+      }
+   }
+
+   private static void finishPreparation(
+      MinecraftServer server,
+      DungeonInstanceSavedData registry,
+      ServerLevel level,
+      DungeonInstanceSavedData.Instance instance,
+      SnowRedGateArenaManager.ArenaPreparationJob job
+   ) {
+      if (!isPreparingInstance(instance)) {
+         PREPARATIONS.remove(job.instanceId());
+      } else {
+         prepareLanding(level, job.center(), job.territory());
+         String setupProblem = configureInstance(level, instance, job.center(), Math.max(1, instance.participants().size()), instance.seed(), job.territory());
+         if (setupProblem != null) {
+            failPreparation(server, registry, instance, "encounter setup failed: " + setupProblem, null);
+         } else {
+            PREPARATIONS.remove(job.instanceId());
+            List<ServerPlayer> entrants = onlineBoundParticipants(server, instance);
+
+            for (ServerPlayer entrant : entrants) {
+               entrant.setNoGravity(false);
+               entrant.setDeltaMovement(Vec3.ZERO);
+               entrant.fallDistance = 0.0F;
+            }
+
+            if (!entrants.isEmpty()) {
+               SololevelingMod.queueServerWork(server, 1, () -> {
+                  try {
+                     teleportEntrants(level, job.center(), entrants, instance);
+                  } catch (RuntimeException exception) {
+                     failPreparation(server, registry, instance, "the final teleport handoff failed", exception);
+                  }
+               });
+            }
+
+            SololevelingMod.LOGGER
+               .info("Prepared {} Monarch red-gate arena {} at {} in staged server ticks", job.territory().id(), instance.id(), job.center());
+         }
+      }
+   }
+
+   private static void failPreparation(
+      MinecraftServer server, DungeonInstanceSavedData registry, DungeonInstanceSavedData.Instance instance, String reason, RuntimeException exception
+   ) {
+      PREPARATIONS.remove(instance.id());
+      DungeonEncounterRuntime.clearInstanceHighlights(server, instance);
+      discardTrackedMobs(server, instance);
+      registry.remove(instance.id());
+      rollbackPreparingGate(server, instance.id());
+
+      for (ServerPlayer participant : server.getPlayerList().getPlayers()) {
+         if (instance.participants().contains(participant.getUUID())
+            && instance.id().toString().equals(participant.getPersistentData().getString("slr_dungeon_instance"))) {
+            if (isArenaDimension(participant.level().dimension())) {
+               recoverEntrant(participant, "The Red Gate could not finish stabilizing, so you were returned safely.");
+            } else {
+               clearEntrantState(participant);
+               participant.sendSystemMessage(
+                  Component.literal("The Red Gate could not finish stabilizing. You may try it again.").withStyle(ChatFormatting.YELLOW)
+               );
+            }
+         }
+      }
+
+      refreshArenaFlag(server);
+      if (exception == null) {
+         SololevelingMod.LOGGER.warn("Cancelled preparing Monarch red-gate arena {}: {}", instance.id(), reason);
+      } else {
+         SololevelingMod.LOGGER.error("Cancelled preparing Monarch red-gate arena {}: {}", instance.id(), reason, exception);
+      }
+   }
+
+   private static void rollbackPreparingGate(MinecraftServer server, UUID gateId) {
+      for (ServerLevel level : server.getAllLevels()) {
+         Entity gate = level.getEntity(gateId);
+         if (gate != null) {
+            gate.getPersistentData().remove("slr_red_gate_wave_instance");
+            gate.getPersistentData().putBoolean("slr_procedural_red_gate", false);
+            gate.getPersistentData().putBoolean("slr_is_red_gate", false);
+            if (gate instanceof Portal1Entity portal) {
+               portal.getEntityData().set(Portal1Entity.DATA_usedbefore, false);
+               portal.setTexture("portalgate2");
+            } else if (gate instanceof RedGateEntity redGate) {
+               redGate.getEntityData().set(RedGateEntity.DATA_usedbefore, false);
+               redGate.setTexture("portalgate2");
+            }
+
+            return;
+         }
+      }
+   }
+
+   private static SnowRedGateArenaManager.ArenaPalette paletteFor(RiftTerritory territory) {
+      return switch (territory) {
+         case DESTRUCTION -> new SnowRedGateArenaManager.ArenaPalette(
+            Blocks.RED_TERRACOTTA, Blocks.NETHERRACK, Blocks.MAGMA_BLOCK, Blocks.BLACKSTONE, Blocks.POLISHED_BLACKSTONE
+         );
+         case FROST -> new SnowRedGateArenaManager.ArenaPalette(Blocks.SNOW_BLOCK, Blocks.PACKED_ICE, Blocks.BLUE_ICE, Blocks.PACKED_ICE, Blocks.BLUE_ICE);
+         case FANGS -> new SnowRedGateArenaManager.ArenaPalette(
+            Blocks.MOSS_BLOCK, Blocks.PODZOL, Blocks.COARSE_DIRT, Blocks.MOSSY_COBBLESTONE, Blocks.MOSS_BLOCK
+         );
+         case PLAGUES -> new SnowRedGateArenaManager.ArenaPalette(
+            Blocks.MUD, Blocks.GREEN_TERRACOTTA, Blocks.CLAY, Blocks.BROWN_TERRACOTTA, Blocks.GREEN_TERRACOTTA
+         );
+         case IRON_BODY -> new SnowRedGateArenaManager.ArenaPalette(
+            Blocks.TUFF, Blocks.ANDESITE, Blocks.GRAY_TERRACOTTA, Blocks.SMOOTH_BASALT, Blocks.POLISHED_ANDESITE
+         );
+         case WHITE_FLAMES -> new SnowRedGateArenaManager.ArenaPalette(
+            Blocks.SOUL_SOIL, Blocks.WHITE_TERRACOTTA, Blocks.SOUL_SAND, Blocks.CALCITE, Blocks.SMOOTH_QUARTZ
+         );
+         case TRANSFIGURATION -> new SnowRedGateArenaManager.ArenaPalette(
+            Blocks.WARPED_NYLIUM, Blocks.PURPLE_TERRACOTTA, Blocks.CYAN_TERRACOTTA, Blocks.WARPED_WART_BLOCK, Blocks.CRYING_OBSIDIAN
+         );
+         case BEGINNING -> new SnowRedGateArenaManager.ArenaPalette(
+            Blocks.SCULK, Blocks.DEEPSLATE, Blocks.BLACKSTONE, Blocks.POLISHED_BLACKSTONE, Blocks.CHISELED_POLISHED_BLACKSTONE
+         );
+      };
+   }
+
+   private static void teleportEntrants(ServerLevel level, BlockPos center, List<ServerPlayer> entrants, DungeonInstanceSavedData.Instance instance) {
+      DungeonInstanceSavedData registry = DungeonInstanceSavedData.get(level);
+      Optional<DungeonInstanceSavedData.Instance> current = registry.getInstance(instance.id()).filter(SnowRedGateArenaManager::isArenaInstance);
+      if (current.isEmpty()) {
+         recoverLostHandoffEntrants(entrants, instance.id(), "The Red Gate closed during entry. Your dungeon binding was recovered.");
+      } else {
+         DungeonInstanceSavedData.Instance activeInstance = current.get();
+         RiftTerritory territory = territoryForInstance(activeInstance).orElse(RiftTerritory.FROST);
+         boolean removedStaleBinding = false;
+
+         for (int index = 0; index < entrants.size(); index++) {
+            ServerPlayer entrant = entrants.get(index);
+            if (entrant != null && !entrant.hasDisconnected()) {
+               if (activeInstance.participants().contains(entrant.getUUID())
+                  && activeInstance.id().toString().equals(entrant.getPersistentData().getString("slr_dungeon_instance"))) {
+                  double angle = (Math.PI * 2) * index / Math.max(1, entrants.size());
+                  BlockPos arrival = center.offset(Mth.floor(Math.cos(angle) * 3.0), 0, Mth.floor(Math.sin(angle) * 3.0));
+                  prepareLanding(level, arrival, territory);
+                  level.getChunk(arrival.getX() >> 4, arrival.getZ() >> 4);
+                  entrant.setNoGravity(false);
+                  entrant.setDeltaMovement(Vec3.ZERO);
+                  entrant.fallDistance = 0.0F;
+                  entrant.teleportTo(level, arrival.getX() + 0.5, arrival.getY(), arrival.getZ() + 0.5, entrant.getYRot(), entrant.getXRot());
+                  entrant.setNoGravity(false);
+                  entrant.setDeltaMovement(Vec3.ZERO);
+                  entrant.fallDistance = 0.0F;
+                  entrant.getPersistentData().remove("slr_red_gate_reveal_ready_time");
+                  DungeonEncounterRuntime.restoreCompletionFor(entrant, activeInstance);
+               } else {
+                  entrant.setNoGravity(false);
+                  entrant.setDeltaMovement(Vec3.ZERO);
+                  entrant.fallDistance = 0.0F;
+                  DungeonEncounterRuntime.clearHighlightsFor(entrant, activeInstance);
+                  removedStaleBinding |= activeInstance.removeParticipant(entrant.getUUID());
+                  if (activeInstance.id().toString().equals(entrant.getPersistentData().getString("slr_dungeon_instance"))) {
+                     recoverLostHandoffEntrant(
+                        entrant, activeInstance.id(), "The Red Gate no longer recognized this entry. Your dungeon binding was recovered."
+                     );
+                  }
+               }
+            }
+         }
+
+         ensureReturnPortal(level, activeInstance);
+         if (removedStaleBinding && activeInstance.participants().isEmpty()) {
+            if (activeInstance.completed()) {
+               discardReturnPortals(level, activeInstance);
+               registry.pruneCompletedEmptyInstances();
+               recordArenaClosure(level.getServer(), activeInstance);
+            } else {
+               failAbandonedInstance(level.getServer(), registry, activeInstance);
+            }
+         }
+      }
+   }
+
+   private static void recoverLostHandoffEntrants(List<ServerPlayer> entrants, UUID instanceId, String message) {
+      for (ServerPlayer entrant : entrants) {
+         recoverLostHandoffEntrant(entrant, instanceId, message);
+      }
+   }
+
+   private static void recoverLostHandoffEntrant(ServerPlayer entrant, UUID instanceId, String message) {
+      if (entrant != null) {
+         entrant.setNoGravity(false);
+         entrant.setDeltaMovement(Vec3.ZERO);
+         entrant.fallDistance = 0.0F;
+         if (instanceId != null && instanceId.toString().equals(entrant.getPersistentData().getString("slr_dungeon_instance"))) {
+            if (isArenaDimension(entrant.level().dimension())) {
+               recoverEntrant(entrant, message);
+            } else {
+               clearEntrantState(entrant);
+               if (!entrant.hasDisconnected()) {
+                  entrant.sendSystemMessage(Component.literal(message).withStyle(ChatFormatting.YELLOW));
+               }
+            }
+         }
+      }
+   }
+
+   private static void prepareEntrant(
+      ServerLevel sourceLevel, Entity gate, ServerPlayer entrant, DungeonInstanceSavedData.Instance instance, RiftTerritory territory
+   ) {
+      discardOwnedShadows(sourceLevel, gate, entrant);
+      entrant.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).ifPresent(capability -> {
+         capability.DunX = entrant.getX();
+         capability.DunY = entrant.getY();
+         capability.DunZ = entrant.getZ();
+         capability.BossKilled = false;
+         capability.dungeoning = true;
+         capability.syncPlayerVariables(entrant);
+      });
+      entrant.getPersistentData().putString("dungeon_tag", gate.getStringUUID());
+      entrant.getPersistentData().putBoolean("slr_procedural_dungeon", true);
+      entrant.getPersistentData().putBoolean("slr_procedural_red_gate", true);
+      entrant.getPersistentData().putString("slr_red_gate_territory", territory.id());
+      entrant.getPersistentData().putString("slr_dungeon_instance", instance.id().toString());
+      entrant.getPersistentData().putLong("slr_red_gate_reveal_ready_time", sourceLevel.getServer().overworld().getGameTime() + 10L);
+      UrgentQuestManager.markDungeonId(entrant, "red_gate");
+      entrant.setNoGravity(false);
+   }
+
+   private static void discardOwnedShadows(ServerLevel level, Entity gate, ServerPlayer owner) {
+      ShadowMonarchManager.dismissLoadedOwnedShadows(owner, level.dimension());
+   }
+
+   private static List<ServerPlayer> nearbyPartyMembers(LevelAccessor world, Entity gate, ServerPlayer initiator) {
+      String party = initiator.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).orElse(new SololevelingModVariables.PlayerVariables()).party;
+      if (party.isBlank()) {
+         return List.of(initiator);
+      }
+
+      List<ServerPlayer> result = new ArrayList<>();
+      result.add(initiator);
+
+      for (Entity candidate : new ArrayList<>(world.players())) {
+         if (candidate instanceof ServerPlayer player && !player.getUUID().equals(initiator.getUUID())) {
+            String candidateParty = player.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null)
+                  .orElse(new SololevelingModVariables.PlayerVariables())
+               .party;
+            if (party.equals(candidateParty) && player.distanceTo(gate) <= 10.0F) {
+               result.add(player);
+            }
+         }
+      }
+
+      return result;
+   }
+
+   private static List<ServerPlayer> sanitizeEntrants(ServerLevel sourceLevel, Entity gate, ServerPlayer initiator, List<ServerPlayer> requested) {
+      List<ServerPlayer> result = new ArrayList<>();
+      if (requested != null) {
+         for (ServerPlayer player : requested) {
+            if (player != null
+               && player.server == sourceLevel.getServer()
+               && player.level() == sourceLevel
+               && player.distanceTo(gate) <= 10.0F
+               && !isDungeonBound(player)
+               && result.stream().noneMatch(existing -> existing.getUUID().equals(player.getUUID()))) {
+               result.add(player);
+            }
+         }
+      }
+
+      if (result.stream().noneMatch(playerx -> playerx.getUUID().equals(initiator.getUUID()))) {
+         result.add(0, initiator);
+      }
+
+      return result;
+   }
+
+   private static boolean isDungeonBound(ServerPlayer player) {
+      if (player == null) {
+         return false;
+      } else {
+         return !player.getPersistentData().getString("slr_dungeon_instance").isBlank()
+            ? true
+            : player.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).map(capability -> capability.dungeoning).orElse(false);
+      }
+   }
+
+   @SubscribeEvent
+   public static void onServerTick(ServerTickEvent event) {
+      if (event.phase == Phase.END) {
+         MinecraftServer server = event.getServer();
+         processPreparationJobs(server);
+         if (++tickCounter % 20 == 0) {
+            DungeonInstanceSavedData registry = DungeonInstanceSavedData.get(server);
+
+            for (DungeonInstanceSavedData.Instance instance : registry.listInstances()) {
+               if (isArenaInstance(instance)) {
+                  ServerLevel level = server.getLevel(instance.dimension());
+                  if (level == null) {
+                     failUnavailableInstance(server, registry, instance, "A legacy Red Gate realm was retired, so you were returned safely.");
+                  } else {
+                     Optional<BlockPos> center = instance.playerStart();
+                     if (center.isEmpty()) {
+                        failUnavailableInstance(server, registry, instance, "Your Red Gate arena had no valid center, so you were returned safely.");
+                     } else if (isPreparingInstance(instance)) {
+                        ensurePreparationQueued(instance);
+                     } else {
+                        enforceBoundary(level, instance, center.get());
+                        leashEncounterMobs(level, instance, center.get());
+                        ensureReturnPortal(level, instance);
+                     }
+                  }
+               }
+            }
+         }
+      }
+   }
+
+   @SubscribeEvent
+   public static void onServerStopped(ServerStoppedEvent event) {
+      PREPARATIONS.clear();
+      tickCounter = 0;
+   }
+
+   @SubscribeEvent
+   public static void onPlayerLoggedIn(PlayerLoggedInEvent event) {
+      if (event.getEntity() instanceof ServerPlayer player) {
+         DungeonInstanceSavedData var11 = DungeonInstanceSavedData.get(player.server);
+         String instanceText = player.getPersistentData().getString("slr_dungeon_instance");
+         Optional<UUID> declaredId = parseUuid(instanceText);
+         Optional candidate = declaredId.flatMap(var11::getInstance);
+         List memberships = var11.listInstances()
+            .stream()
+            .filter(SnowRedGateArenaManager::isArenaInstance)
+            .filter(instance -> instance.participants().contains(player.getUUID()))
+            .toList();
+         if (candidate.isPresent() && !isArenaInstance((DungeonInstanceSavedData.Instance)candidate.get())) {
+            for (DungeonInstanceSavedData.Instance stale : memberships) {
+               detachArenaParticipant(player.server, var11, stale, player.getUUID());
+            }
+         } else {
+            DungeonInstanceSavedData.Instance selected = candidate.filter(SnowRedGateArenaManager::isArenaInstance)
+               .filter(instance -> instance.participants().contains(player.getUUID()))
+               .orElse(null);
+            if (selected == null && memberships.size() == 1) {
+               selected = (DungeonInstanceSavedData.Instance)memberships.get(0);
+            }
+
+            if (selected == null && memberships.size() > 1) {
+               List<DungeonInstanceSavedData.Instance> dimensionMatches = memberships.stream()
+                  .filter(instance -> instance.dimension().equals(player.level().dimension()))
+                  .toList();
+               if (dimensionMatches.size() == 1) {
+                  selected = dimensionMatches.get(0);
+               }
+            }
+
+            if (selected != null) {
+               DungeonInstanceSavedData.Instance authoritative = selected;
+               candidate.filter(SnowRedGateArenaManager::isArenaInstance)
+                  .filter(instance -> instance != authoritative && instance.participants().isEmpty())
+                  .ifPresent(instance -> detachArenaParticipant(player.server, var11, instance, player.getUUID()));
+
+               for (DungeonInstanceSavedData.Instance stale : memberships) {
+                  if (stale != authoritative) {
+                     detachArenaParticipant(player.server, var11, stale, player.getUUID());
+                  }
+               }
+
+               if (!player.level().dimension().equals(authoritative.dimension())) {
+                  player.getPersistentData().putLong("slr_red_gate_reveal_ready_time", player.server.overworld().getGameTime() + 10L);
+               }
+
+               restoreArenaBinding(player, authoritative);
+               resumeArenaParticipant(player, var11, authoritative);
+            } else {
+               if (memberships.size() > 1) {
+                  for (DungeonInstanceSavedData.Instance stale : memberships) {
+                     detachArenaParticipant(player.server, var11, stale, player.getUUID());
+                  }
+               }
+
+               candidate.filter(SnowRedGateArenaManager::isArenaInstance)
+                  .filter(instance -> !instance.participants().contains(player.getUUID()))
+                  .ifPresent(instance -> detachArenaParticipant(player.server, var11, instance, player.getUUID()));
+               boolean arenaBinding = candidate.map(SnowRedGateArenaManager::isArenaInstance).orElse(false) || needsArenaRecovery(player);
+               if (arenaBinding) {
+                  UUID missingGateId = declaredId.orElseGet(() -> parseUuid(player.getPersistentData().getString("dungeon_tag")).orElse(null));
+                  if (missingGateId != null && var11.getInstance(missingGateId).isEmpty()) {
+                     recordArenaClosure(player.server, missingGateId);
+                  } else if (missingGateId == null) {
+                     refreshArenaFlag(player.server);
+                  }
+
+                  recoverEntrant(
+                     player,
+                     instanceText.isBlank()
+                        ? "Your red-gate encounter could not be restored, so you were returned safely."
+                        : "That red-gate encounter no longer exists, so you were returned safely."
+                  );
+               }
+            }
+         }
+      }
+   }
+
+   private static Optional<UUID> parseUuid(String value) {
+      if (value != null && !value.isBlank()) {
+         try {
+            return Optional.of(UUID.fromString(value));
+         } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
+         }
+      } else {
+         return Optional.empty();
+      }
+   }
+
+   private static void restoreArenaBinding(ServerPlayer player, DungeonInstanceSavedData.Instance instance) {
+      player.getPersistentData().putString("slr_dungeon_instance", instance.id().toString());
+      player.getPersistentData().putString("dungeon_tag", instance.id().toString());
+      player.getPersistentData().putBoolean("slr_procedural_dungeon", true);
+      player.getPersistentData().putBoolean("slr_procedural_red_gate", true);
+      territoryForInstance(instance).ifPresent(territory -> player.getPersistentData().putString("slr_red_gate_territory", territory.id()));
+      player.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).ifPresent(capability -> {
+         capability.dungeoning = true;
+         capability.syncPlayerVariables(player);
+      });
+      UrgentQuestManager.markDungeonId(player, "red_gate");
+   }
+
+   private static void resumeArenaParticipant(ServerPlayer player, DungeonInstanceSavedData registry, DungeonInstanceSavedData.Instance instance) {
+      ServerLevel level = player.server.getLevel(instance.dimension());
+      BlockPos center = instance.playerStart().orElse(null);
+      if (level == null || center == null) {
+         failUnavailableInstance(player.server, registry, instance, "That Monarch territory is unavailable, so you were returned safely.");
+      } else if (isPreparingInstance(instance)) {
+         ensurePreparationQueued(instance);
+         player.setNoGravity(false);
+         player.fallDistance = 0.0F;
+      } else if (player.level() == level) {
+         player.setNoGravity(false);
+         player.fallDistance = 0.0F;
+         DungeonEncounterRuntime.restoreCompletionFor(player, instance);
+      } else {
+         player.setNoGravity(false);
+         int revealDelay = Math.max(1, revealDelayRemaining(player.server, player));
+         SololevelingMod.queueServerWork(player.server, revealDelay, () -> {
+            if (!player.hasDisconnected() && instance.id().toString().equals(player.getPersistentData().getString("slr_dungeon_instance"))) {
+               teleportEntrants(level, center, List.of(player), instance);
+            }
+         });
+      }
+   }
+
+   private static int revealDelayRemaining(MinecraftServer server, ServerPlayer player) {
+      if (server != null && player != null) {
+         long readyTime = player.getPersistentData().getLong("slr_red_gate_reveal_ready_time");
+         long remaining = readyTime - server.overworld().getGameTime();
+         return (int)Math.max(0L, Math.min(2147483647L, remaining));
+      } else {
+         return 0;
+      }
+   }
+
+   @SubscribeEvent(priority = EventPriority.LOWEST)
+   public static void onPlayerClone(Clone event) {
+      if (event.isWasDeath() && event.getOriginal() instanceof ServerPlayer original && event.getEntity() instanceof ServerPlayer clone) {
+         DungeonInstanceSavedData registry = DungeonInstanceSavedData.get(original.serverLevel());
+         List<DungeonInstanceSavedData.Instance> memberships = registry.listInstances()
+            .stream()
+            .filter(SnowRedGateArenaManager::isArenaInstance)
+            .filter(instancex -> instancex.participants().contains(original.getUUID()))
+            .toList();
+         if (!memberships.isEmpty()) {
+            for (DungeonInstanceSavedData.Instance instance : memberships) {
+               detachArenaParticipant(original.server, registry, instance, original.getUUID());
+            }
+
+            clearEntrantState(clone);
+            clone.sendSystemMessage(
+               Component.literal("You died inside the red gate. Its entrance remains sealed until the gate breaks.").withStyle(ChatFormatting.YELLOW)
+            );
+         }
+      }
+   }
+
+   private static void detachArenaParticipant(
+      MinecraftServer server, DungeonInstanceSavedData registry, DungeonInstanceSavedData.Instance instance, UUID playerId
+   ) {
+      DungeonEncounterRuntime.clearHighlightsFor(server.getPlayerList().getPlayer(playerId), instance);
+      instance.removeParticipant(playerId);
+      if (instance.participants().isEmpty()) {
+         if (instance.completed()) {
+            ServerLevel level = server.getLevel(instance.dimension());
+            if (level != null) {
+               discardReturnPortals(level, instance);
+            }
+
+            registry.pruneCompletedEmptyInstances();
+            recordArenaClosure(server, instance);
+         } else {
+            failAbandonedInstance(server, registry, instance);
+         }
+      }
+   }
+
+   private static boolean needsArenaRecovery(ServerPlayer player) {
+      boolean inTerritory = isArenaDimension(player.level().dimension());
+      boolean dungeonCapability = player.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null)
+         .map(capability -> capability.dungeoning)
+         .orElse(false);
+      return player.getPersistentData().getBoolean("slr_procedural_red_gate")
+         || RiftTerritory.fromName(player.getPersistentData().getString("slr_red_gate_territory")) != null
+         || inTerritory && (dungeonCapability || !player.getPersistentData().getString("dungeon_tag").isBlank());
+   }
+
+   private static void recoverEntrant(ServerPlayer player, String message) {
+      boolean stranded = isArenaDimension(player.level().dimension());
+      ServerLevel overworld = player.server.getLevel(Level.OVERWORLD);
+      SololevelingModVariables.PlayerVariables variables = player.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).orElse(null);
+      boolean hasSavedReturn = player.getPersistentData().getBoolean("slr_procedural_red_gate")
+         || !player.getPersistentData().getString("dungeon_tag").isBlank()
+         || variables != null && variables.dungeoning;
+      double returnX;
+      double returnY;
+      double returnZ;
+      if (variables != null && hasSavedReturn) {
+         returnX = variables.DunX + 3.0;
+         returnY = variables.DunY;
+         returnZ = variables.DunZ;
+      } else if (overworld != null) {
+         BlockPos spawn = overworld.getSharedSpawnPos();
+         returnX = spawn.getX() + 0.5;
+         returnY = spawn.getY() + 1.0;
+         returnZ = spawn.getZ() + 0.5;
+      } else {
+         returnX = player.getX();
+         returnY = player.getY();
+         returnZ = player.getZ();
+      }
+
+      clearEntrantState(player);
+      player.sendSystemMessage(Component.literal(message).withStyle(ChatFormatting.YELLOW));
+      boolean shouldReturn = stranded || hasSavedReturn;
+      if (shouldReturn && overworld != null) {
+         SololevelingMod.queueServerWork(player.server, 1, () -> {
+            if (!player.hasDisconnected() && (!stranded || isArenaDimension(player.level().dimension()))) {
+               player.teleportTo(overworld, returnX, returnY, returnZ, player.getYRot(), player.getXRot());
+               player.setNoGravity(false);
+               player.setDeltaMovement(Vec3.ZERO);
+               player.fallDistance = 0.0F;
+            }
+         });
+      }
+   }
+
+   private static void clearEntrantState(ServerPlayer player) {
+      player.getPersistentData().remove("slr_dungeon_instance");
+      player.getPersistentData().remove("dungeon_tag");
+      player.getPersistentData().remove("slr_red_gate_boundary_notice");
+      player.getPersistentData().remove("slr_red_gate_reveal_ready_time");
+      player.getPersistentData().putBoolean("slr_procedural_dungeon", false);
+      player.getPersistentData().putBoolean("slr_procedural_red_gate", false);
+      player.getPersistentData().remove("slr_red_gate_territory");
+      player.setNoGravity(false);
+      player.setDeltaMovement(Vec3.ZERO);
+      player.fallDistance = 0.0F;
+      player.getCapability(SololevelingModVariables.PLAYER_VARIABLES_CAPABILITY, null).ifPresent(capability -> {
+         capability.BossKilled = false;
+         capability.dungeoning = false;
+         capability.syncPlayerVariables(player);
+      });
+   }
+
+   private static void failAbandonedInstance(MinecraftServer server, DungeonInstanceSavedData registry, DungeonInstanceSavedData.Instance instance) {
+      PREPARATIONS.remove(instance.id());
+      DungeonEncounterRuntime.clearInstanceHighlights(server, instance);
+      ServerLevel level = server.getLevel(instance.dimension());
+      if (level != null) {
+         discardReturnPortals(level, instance);
+      }
+
+      discardTrackedMobs(server, instance);
+      registry.remove(instance.id());
+      SololevelingModVariables.MapVariables variables = SololevelingModVariables.MapVariables.get(server.overworld());
+      variables.RedGate = true;
+      variables.syncData(server.overworld());
+      SololevelingMod.LOGGER.info("Closed empty Monarch red-gate arena {}; its entrance remains sealed until it breaks", instance.id());
+   }
+
+   private static void failUnavailableInstance(
+      MinecraftServer server, DungeonInstanceSavedData registry, DungeonInstanceSavedData.Instance instance, String message
+   ) {
+      PREPARATIONS.remove(instance.id());
+      DungeonEncounterRuntime.clearInstanceHighlights(server, instance);
+      discardTrackedMobs(server, instance);
+      registry.remove(instance.id());
+      recordArenaClosure(server, instance);
+
+      for (ServerPlayer participant : server.getPlayerList().getPlayers()) {
+         if (instance.participants().contains(participant.getUUID())) {
+            recoverEntrant(participant, message);
+         }
+      }
+
+      SololevelingMod.LOGGER.warn("Closed unavailable Monarch red-gate arena {} in {}", instance.id(), instance.dimension().location());
+   }
+
+   private static void discardTrackedMobs(MinecraftServer server, DungeonInstanceSavedData.Instance instance) {
+      ServerLevel level = server.getLevel(instance.dimension());
+      if (level != null) {
+         for (DungeonInstanceSavedData.EncounterState encounter : instance.encounters()) {
+            for (UUID mobId : encounter.trackedMobs()) {
+               Entity mob = level.getEntity(mobId);
+               if (mob != null) {
+                  mob.discard();
+               }
+            }
+         }
+      }
+   }
+
+   private static void recordArenaClosure(MinecraftServer server, DungeonInstanceSavedData.Instance instance) {
+      recordArenaClosure(server, instance.id());
+   }
+
+   private static void recordArenaClosure(MinecraftServer server, UUID gateId) {
+      String gateToken = gateId + ",";
+      SololevelingModVariables.MapVariables variables = SololevelingModVariables.MapVariables.get(server.overworld());
+      if (!variables.GatesCleared.contains(gateToken)) {
+         variables.GatesCleared = variables.GatesCleared + gateToken;
+      }
+
+      variables.RedGate = hasActiveArena(server);
+      variables.syncData(server.overworld());
+   }
+
+   private static void refreshArenaFlag(MinecraftServer server) {
+      SololevelingModVariables.MapVariables variables = SololevelingModVariables.MapVariables.get(server.overworld());
+      variables.RedGate = hasActiveArena(server);
+      variables.syncData(server.overworld());
+   }
+
+   private static void discardReturnPortals(ServerLevel level, DungeonInstanceSavedData.Instance instance) {
+      BlockPos exit = instance.exit().orElseGet(() -> instance.playerStart().orElse(BlockPos.ZERO));
+      AABB search = AABB.ofSize(Vec3.atCenterOf(exit), 16.0, 10.0, 16.0);
+
+      for (Entity portal : level.getEntitiesOfClass(
+         Entity.class,
+         search,
+         entity -> entity.getType() == SololevelingModEntities.PORTAL_12.get()
+            && instance.id().toString().equals(entity.getPersistentData().getString("slr_dungeon_instance"))
+      )) {
+         portal.discard();
+      }
+   }
+
+   private static void enforceBoundary(ServerLevel level, DungeonInstanceSavedData.Instance instance, BlockPos center) {
+      for (ServerPlayer player : level.players()) {
+         if (instance.participants().contains(player.getUUID())
+            && instance.id().toString().equals(player.getPersistentData().getString("slr_dungeon_instance"))) {
+            double dx = player.getX() - (center.getX() + 0.5);
+            double dz = player.getZ() - (center.getZ() + 0.5);
+            if (!(dx * dx + dz * dz <= 6400.0)) {
+               player.teleportTo(level, center.getX() + 0.5, center.getY(), center.getZ() + 0.5, player.getYRot(), player.getXRot());
+               long lastNotice = player.getPersistentData().getLong("slr_red_gate_boundary_notice");
+               if (level.getGameTime() - lastNotice >= 100L) {
+                  player.displayClientMessage(Component.literal("The Monarch territory's barrier forces you back.").withStyle(ChatFormatting.AQUA), true);
+                  player.getPersistentData().putLong("slr_red_gate_boundary_notice", level.getGameTime());
+               }
+            }
+         }
+      }
+   }
+
+   private static void leashEncounterMobs(ServerLevel level, DungeonInstanceSavedData.Instance instance, BlockPos center) {
+      for (DungeonInstanceSavedData.EncounterState encounter : instance.encounters()) {
+         if (encounter.activated() && !encounter.completed()) {
+            for (UUID mobId : encounter.trackedMobs()) {
+               Entity mob = level.getEntity(mobId);
+               if (mob != null) {
+                  double dx = mob.getX() - (center.getX() + 0.5);
+                  double dz = mob.getZ() - (center.getZ() + 0.5);
+                  if (!(dx * dx + dz * dz <= 5776.0)) {
+                     BlockPos returnPosition = findSafeSurface(
+                        level, center.getX() + level.random.nextInt(17) - 8, center.getZ() + level.random.nextInt(17) - 8, center
+                     );
+                     if (returnPosition != null) {
+                        mob.teleportTo(returnPosition.getX() + 0.5, returnPosition.getY(), returnPosition.getZ() + 0.5);
+                     }
+                  }
+               }
+            }
+         }
+      }
+   }
+
+   private static void ensureReturnPortal(ServerLevel level, DungeonInstanceSavedData.Instance instance) {
+      if (instance.returnPortalSuppressed()) {
+         discardReturnPortals(level, instance);
+      } else if (!instance.completed() && instance.returnPortalDeferred()) {
+         discardReturnPortals(level, instance);
+      } else {
+         BlockPos exit = instance.exit().orElseGet(() -> instance.playerStart().orElse(BlockPos.ZERO));
+         boolean participantPresent = level.players()
+            .stream()
+            .anyMatch(
+               player -> instance.participants().contains(player.getUUID())
+                  && instance.id().toString().equals(player.getPersistentData().getString("slr_dungeon_instance"))
+            );
+         if (participantPresent && level.hasChunkAt(exit)) {
+            AABB search = AABB.ofSize(Vec3.atCenterOf(exit), 16.0, 10.0, 16.0);
+            boolean exists = !level.getEntitiesOfClass(
+                  Entity.class,
+                  search,
+                  entity -> entity.getType() == SololevelingModEntities.PORTAL_12.get()
+                     && instance.id().toString().equals(entity.getPersistentData().getString("slr_dungeon_instance"))
+               )
+               .isEmpty();
+            if (!exists) {
+               prepareLanding(level, exit, territoryForInstance(instance).orElse(RiftTerritory.FROST));
+               Entity portal = DungeonReturnPortalSpawner.spawn(
+                  level, exit, instance.exitFacing().orElse(Direction.SOUTH), instance.id(), instance.id().toString()
+               );
+               if (portal != null) {
+                  SololevelingMod.LOGGER
+                     .info("{} return portal for Monarch red-gate arena {}", instance.completed() ? "Opened" : "Created locked", instance.id());
+               }
+            }
+         }
+      }
+   }
+
+   private record ArenaPalette(Block groundPrimary, Block groundSecondary, Block groundAccent, Block shardPrimary, Block shardAccent) {
+   }
+
+   private static final class ArenaPreparationJob {
+      private static final long DECORATION_SALT = 5883918764633011832L;
+      private static final long SURFACE_SALT = 7640891576956012809L;
+      private final UUID instanceId;
+      private final BlockPos center;
+      private final RiftTerritory territory;
+      private final long seed;
+      private final SnowRedGateArenaManager.ArenaPalette palette;
+      private final RandomSource random;
+      private SnowRedGateArenaManager.PreparationPhase phase = SnowRedGateArenaManager.PreparationPhase.LANDSCAPE;
+      private int landscapeIndex;
+      private int sceneryIndex;
+      private int shardIndex;
+      private boolean staleEntitiesDiscarded;
+
+      private ArenaPreparationJob(UUID instanceId, BlockPos center, RiftTerritory territory, long seed) {
+         this.instanceId = instanceId;
+         this.center = center.immutable();
+         this.territory = territory;
+         this.seed = seed;
+         this.palette = SnowRedGateArenaManager.paletteFor(territory);
+         this.random = RandomSource.create(seed ^ 5883918764633011832L);
+      }
+
+      private UUID instanceId() {
+         return this.instanceId;
+      }
+
+      private BlockPos center() {
+         return this.center;
+      }
+
+      private RiftTerritory territory() {
+         return this.territory;
+      }
+
+      private boolean matches(BlockPos expectedCenter, RiftTerritory expectedTerritory, long expectedSeed) {
+         return this.center.equals(expectedCenter) && this.territory == expectedTerritory && this.seed == expectedSeed;
+      }
+
+      private boolean finished() {
+         return this.phase == SnowRedGateArenaManager.PreparationPhase.COMPLETE;
+      }
+
+      private int advance(ServerLevel level, int budget) {
+         if (budget > 0 && !this.finished()) {
+            if (!this.staleEntitiesDiscarded) {
+               AABB cleanupBounds = new AABB(this.center).inflate(80.0, 64.0, 80.0);
+
+               for (Entity stale : level.getEntitiesOfClass(Entity.class, cleanupBounds, entity -> !(entity instanceof ServerPlayer))) {
+                  stale.discard();
+               }
+
+               this.staleEntitiesDiscarded = true;
+            }
+
+            int used = 0;
+            int sceneryThisPass = 0;
+            int shardsThisPass = 0;
+
+            while (
+               used < budget
+                  && !this.finished()
+                  && (this.phase != SnowRedGateArenaManager.PreparationPhase.SCENERY || sceneryThisPass < 4)
+                  && (this.phase != SnowRedGateArenaManager.PreparationPhase.SHARDS || shardsThisPass < 6)
+            ) {
+               SnowRedGateArenaManager.PreparationPhase consumedPhase = this.phase;
+
+               boolean consumed = switch (this.phase) {
+                  case LANDSCAPE -> this.advanceLandscapeColumn(level);
+                  case SCENERY -> this.advanceScenery(level);
+                  case SHARDS -> this.advanceShard(level);
+                  case COMPLETE -> false;
+               };
+               if (consumed) {
+                  used++;
+                  if (consumedPhase == SnowRedGateArenaManager.PreparationPhase.SCENERY) {
+                     sceneryThisPass++;
+                  } else if (consumedPhase == SnowRedGateArenaManager.PreparationPhase.SHARDS) {
+                     shardsThisPass++;
+                  }
+               }
+            }
+
+            return used;
+         } else {
+            return 0;
+         }
+      }
+
+      private boolean advanceLandscapeColumn(ServerLevel level) {
+         int diameter = 225;
+         int total = diameter * diameter;
+
+         while (this.landscapeIndex < total) {
+            int index = this.landscapeIndex++;
+            int dx = index / diameter - 112;
+            int dz = index % diameter - 112;
+            if (dx * dx + dz * dz <= 12544) {
+               int baseSurfaceY = this.center.getY() - 1;
+               int targetSurfaceY = Mth.clamp(baseSurfaceY + this.terrainOffset(dx, dz), level.getMinBuildHeight() + 2, level.getMaxBuildHeight() - 3);
+               int minimumY = Math.max(level.getMinBuildHeight() + 1, baseSurfaceY + -4);
+               int maximumY = Math.min(level.getMaxBuildHeight() - 2, baseSurfaceY + 26);
+               BlockState surface = this.surfaceState(dx, dz);
+               BlockState fill = this.palette.groundPrimary().defaultBlockState();
+
+               for (int y = minimumY; y <= maximumY; y++) {
+                  BlockPos position = new BlockPos(this.center.getX() + dx, y, this.center.getZ() + dz);
+                  BlockState desired = y > targetSurfaceY ? Blocks.AIR.defaultBlockState() : (y == targetSurfaceY ? surface : fill);
+                  SnowRedGateArenaManager.setBlockIfChanged(level, position, desired);
+               }
+
+               return true;
+            }
+         }
+
+         this.phase = SnowRedGateArenaManager.PreparationPhase.SCENERY;
+         return false;
+      }
+
+      private boolean advanceScenery(ServerLevel level) {
+         if (this.sceneryIndex >= 42) {
+            this.phase = SnowRedGateArenaManager.PreparationPhase.SHARDS;
+            return false;
+         } else {
+            int feature = this.sceneryIndex++;
+            double angle = this.random.nextDouble() * Math.PI * 2.0;
+            int radius = 22 + this.random.nextInt(61);
+            int dx = Mth.floor(Math.cos(angle) * radius);
+            int dz = Mth.floor(Math.sin(angle) * radius);
+            BlockPos base = this.standingPosition(dx, dz);
+            this.placeSceneryFeature(level, base, feature);
+            return true;
+         }
+      }
+
+      private boolean advanceShard(ServerLevel level) {
+         if (this.shardIndex >= 18) {
+            this.phase = SnowRedGateArenaManager.PreparationPhase.COMPLETE;
+            return false;
+         }
+
+         int shard = this.shardIndex++;
+         double angle = (Math.PI * 2) * shard / 18.0 + this.random.nextDouble() * 0.18;
+         int radius = 67 + this.random.nextInt(18);
+         int dx = Mth.floor(Math.cos(angle) * radius);
+         int dz = Mth.floor(Math.sin(angle) * radius);
+         BlockPos base = this.standingPosition(dx, dz);
+         int height = 3 + this.random.nextInt(5);
+
+         for (int y = 0; y < height; y++) {
+            BlockPos shardPos = base.above(y);
+            BlockState current = level.getBlockState(shardPos);
+            if (!current.isAir() && !current.is(Blocks.SNOW)) {
+               break;
+            }
+
+            boolean accent = y == height - 1 || this.random.nextInt(5) == 0;
+            SnowRedGateArenaManager.setBlockIfChanged(level, shardPos, (accent ? this.palette.shardAccent() : this.palette.shardPrimary()).defaultBlockState());
+         }
+
+         if (this.shardIndex >= 18) {
+            this.phase = SnowRedGateArenaManager.PreparationPhase.COMPLETE;
+         }
+
+         return true;
+      }
+
+      private BlockPos standingPosition(int dx, int dz) {
+         return this.center.offset(dx, this.terrainOffset(dx, dz), dz);
+      }
+
+      private int terrainOffset(int dx, int dz) {
+         double radius = Math.sqrt((double)dx * dx + (double)dz * dz);
+         if (!(radius <= 11.0) && !(radius >= 112.0)) {
+            double phaseA = unit(this.seed ^ 2611923443488327891L) * Math.PI * 2.0;
+            double phaseB = unit(this.seed ^ 1376283091369227076L) * Math.PI * 2.0;
+            double phaseC = unit(this.seed ^ -6626703657320631856L) * Math.PI * 2.0;
+            double broad = Math.sin(dx * 0.052 + phaseA) + Math.cos(dz * 0.047 + phaseB) + Math.sin((dx + dz) * 0.031 + phaseC) * 0.72;
+            double detail = Math.sin(dx * 0.137 - dz * 0.109 + phaseB) * 0.8 + Math.cos((dx - dz) * 0.091 + phaseA) * 0.45;
+
+            double shape = switch (this.territory) {
+               case DESTRUCTION -> 4.0 + broad * 3.6 + Math.abs(detail) * 2.8;
+               case FROST -> 5.0 + broad * 4.8 + Math.abs(detail) * 3.7;
+               case FANGS -> 3.0 + broad * 3.5 + detail * 1.8;
+               case PLAGUES -> broad * 1.8 - Math.abs(detail) * 1.2;
+               case IRON_BODY -> 5.0 + broad * 5.4 + Math.abs(detail) * 3.8;
+               case WHITE_FLAMES -> 3.0 + broad * 3.7 + Math.abs(detail) * 2.0;
+               case TRANSFIGURATION -> 4.0 + broad * 5.0 + detail * 3.2;
+               case BEGINNING -> 4.0 + broad * 4.4 + detail * 2.1;
+            };
+            double clearingBlend = smoothStep((radius - 11.0) / 18.0);
+            double ridgeStart = 86.0;
+            double ridge = smoothStep((radius - ridgeStart) / Math.max(1.0, 112.0 - ridgeStart)) * 11.0;
+            return Mth.clamp((int)Math.round(shape * clearingBlend + ridge), -4, 16);
+         } else {
+            return 0;
+         }
+      }
+
+      private BlockState surfaceState(int dx, int dz) {
+         double radius = Math.sqrt((double)dx * dx + (double)dz * dz);
+         if (radius <= 15.0) {
+            return this.palette.groundPrimary().defaultBlockState();
+         } else {
+            double roll = unit(this.seed ^ 7640891576956012809L ^ dx * -7046029254386353131L ^ dz * -4417276706812531889L);
+            if (!(roll < 0.1) || radius < 24.0 && SnowRedGateArenaManager.isUnsafeLandingBlock(this.palette.groundAccent().defaultBlockState())) {
+               return roll < 0.38 ? this.palette.groundSecondary().defaultBlockState() : this.palette.groundPrimary().defaultBlockState();
+            } else {
+               return this.palette.groundAccent().defaultBlockState();
+            }
+         }
+      }
+
+      private void placeSceneryFeature(ServerLevel level, BlockPos base, int feature) {
+         switch (this.territory) {
+            case DESTRUCTION:
+               if (feature % 4 == 0) {
+                  this.placeDeadTree(level, base, Blocks.STRIPPED_DARK_OAK_LOG, 4 + this.random.nextInt(4));
+               } else {
+                  this.placeSpire(level, base, Blocks.BLACKSTONE, Blocks.MAGMA_BLOCK, 3 + this.random.nextInt(5));
+               }
+               break;
+            case FROST:
+               if (feature % 3 == 0) {
+                  this.placeCanopyTree(level, base, Blocks.SPRUCE_LOG, Blocks.SPRUCE_LEAVES, 5 + this.random.nextInt(3), true);
+               } else {
+                  this.placeSpire(level, base, Blocks.PACKED_ICE, Blocks.BLUE_ICE, 3 + this.random.nextInt(5));
+               }
+               break;
+            case FANGS:
+               if (feature % 3 == 0) {
+                  this.placeCanopyTree(level, base, Blocks.DARK_OAK_LOG, Blocks.DARK_OAK_LEAVES, 4 + this.random.nextInt(3), true);
+               } else {
+                  this.placeBoulder(level, base, Blocks.MOSSY_COBBLESTONE, Blocks.MOSS_BLOCK);
+               }
+               break;
+            case PLAGUES:
+               if (feature % 4 == 0) {
+                  this.placeDeadTree(level, base, Blocks.MANGROVE_LOG, 4 + this.random.nextInt(4));
+               } else {
+                  this.placeBoulder(level, base, Blocks.MANGROVE_ROOTS, Blocks.MUD);
+               }
+               break;
+            case IRON_BODY:
+               this.placeBoulder(level, base, Blocks.TUFF, Blocks.SMOOTH_BASALT);
+               break;
+            case WHITE_FLAMES:
+               this.placeSpire(level, base, Blocks.CALCITE, Blocks.SMOOTH_QUARTZ, 4 + this.random.nextInt(5));
+               break;
+            case TRANSFIGURATION:
+               if (feature % 3 == 0) {
+                  this.placeCanopyTree(level, base, Blocks.WARPED_STEM, Blocks.WARPED_WART_BLOCK, 4 + this.random.nextInt(4), false);
+               } else {
+                  this.placeSpire(level, base, Blocks.CRYING_OBSIDIAN, Blocks.WARPED_WART_BLOCK, 3 + this.random.nextInt(6));
+               }
+               break;
+            case BEGINNING:
+               if (feature % 3 == 0) {
+                  this.placeMonolith(level, base, 5 + this.random.nextInt(5));
+               } else {
+                  this.placeBoulder(level, base, Blocks.DEEPSLATE, Blocks.SCULK);
+               }
+         }
+      }
+
+      private void placeCanopyTree(ServerLevel level, BlockPos base, Block trunk, Block canopy, int height, boolean persistentLeaves) {
+         for (int y = 0; y < height; y++) {
+            this.setSceneryBlock(level, base.above(y), trunk.defaultBlockState());
+         }
+
+         BlockState canopyState = canopy.defaultBlockState();
+         if (persistentLeaves && canopyState.hasProperty(LeavesBlock.PERSISTENT)) {
+            canopyState = canopyState.setValue(LeavesBlock.PERSISTENT, true);
+         }
+
+         for (int layer = -2; layer <= 1; layer++) {
+            int radius = layer >= 1 ? 1 : (layer == 0 ? 2 : 1);
+            int y = height + layer;
+
+            for (int dx = -radius; dx <= radius; dx++) {
+               for (int dz = -radius; dz <= radius; dz++) {
+                  if (Math.abs(dx) + Math.abs(dz) <= radius + 1) {
+                     this.setSceneryBlock(level, base.offset(dx, y, dz), canopyState);
+                  }
+               }
+            }
+         }
+      }
+
+      private void placeDeadTree(ServerLevel level, BlockPos base, Block trunk, int height) {
+         for (int y = 0; y < height; y++) {
+            this.setSceneryBlock(level, base.above(y), trunk.defaultBlockState());
+         }
+
+         Direction first = Plane.HORIZONTAL.getRandomDirection(this.random);
+         Direction second = first.getClockWise();
+         this.setSceneryBlock(level, base.above(height - 2).relative(first), trunk.defaultBlockState());
+         this.setSceneryBlock(level, base.above(height - 1).relative(second), trunk.defaultBlockState());
+      }
+
+      private void placeSpire(ServerLevel level, BlockPos base, Block primary, Block accent, int height) {
+         for (int y = 0; y < height; y++) {
+            Block block = y != height - 1 && (y <= 1 || this.random.nextInt(5) != 0) ? primary : accent;
+            this.setSceneryBlock(level, base.above(y), block.defaultBlockState());
+            if (y < 2) {
+               this.setSceneryBlock(level, base.offset(1, y, 0), primary.defaultBlockState());
+               this.setSceneryBlock(level, base.offset(0, y, 1), primary.defaultBlockState());
+            }
+         }
+      }
+
+      private void placeBoulder(ServerLevel level, BlockPos base, Block primary, Block accent) {
+         for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+               for (int y = 0; y <= 1; y++) {
+                  if (Math.abs(dx) + Math.abs(dz) + y <= 3) {
+                     Block block = this.random.nextInt(5) == 0 ? accent : primary;
+                     this.setSceneryBlock(level, base.offset(dx, y, dz), block.defaultBlockState());
+                  }
+               }
+            }
+         }
+      }
+
+      private void placeMonolith(ServerLevel level, BlockPos base, int height) {
+         for (int y = 0; y < height; y++) {
+            Block block = y == height - 1 ? Blocks.CHISELED_DEEPSLATE : (y % 3 == 0 ? Blocks.POLISHED_DEEPSLATE : Blocks.DEEPSLATE_BRICKS);
+            this.setSceneryBlock(level, base.above(y), block.defaultBlockState());
+         }
+
+         this.setSceneryBlock(level, base.relative(Direction.EAST), Blocks.SCULK.defaultBlockState());
+         this.setSceneryBlock(level, base.relative(Direction.WEST), Blocks.SCULK.defaultBlockState());
+      }
+
+      private void setSceneryBlock(ServerLevel level, BlockPos position, BlockState state) {
+         BlockState current = level.getBlockState(position);
+         if (current.isAir() || current.is(Blocks.SNOW)) {
+            SnowRedGateArenaManager.setBlockIfChanged(level, position, state);
+         }
+      }
+
+      private static double smoothStep(double value) {
+         double clamped = Mth.clamp(value, 0.0, 1.0);
+         return clamped * clamped * (3.0 - 2.0 * clamped);
+      }
+
+      private static double unit(long value) {
+         value ^= value >>> 33;
+         value *= -49064778989728563L;
+         value ^= value >>> 33;
+         value *= -4265267296055464877L;
+         value ^= value >>> 33;
+         return (value >>> 11) * 1.110223E-16F;
+      }
+   }
+
+   private enum PreparationPhase {
+      LANDSCAPE,
+      SCENERY,
+      SHARDS,
+      COMPLETE;
+   }
+
+   private record WaveSpec(String id, ResourceLocation pool, int count, boolean boss, boolean elite, int delayTicks) {
+   }
+}
